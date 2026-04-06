@@ -15,63 +15,46 @@
 
 **前置条件：** 需要有 Replit 账号（免费版即可）
 
-### 步骤一：Fork 或导入本仓库
-
-在 Replit 上新建项目，选择 **Import from GitHub**，输入：
-```
-https://github.com/aiaimimi0920/ai-integration-hub
-```
-
-### 步骤二：安装依赖
-
-在 Replit Shell 中运行：
-```bash
-pnpm install
-```
-
-### 步骤三：添加 AI Integrations
-
-在 Replit 左侧工具栏点击 **Tools → Integrations**，分别添加：
-- **OpenAI** integration
-- **Anthropic** integration
-
-添加后，Replit 会自动注入以下环境变量（无需手动设置）：
-- `AI_INTEGRATIONS_OPENAI_API_KEY`
-- `AI_INTEGRATIONS_OPENAI_BASE_URL`
-- `AI_INTEGRATIONS_ANTHROPIC_API_KEY`
-- `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`
-
-### 步骤四：设置 API Key（可选但推荐）
-
-在 Replit 左侧工具栏点击 **Secrets（锁图标）**，添加：
-```
-PROXY_API_KEY = 你自己设置的密钥
-```
-> 如果不设置，默认值为 `123456`（仅用于测试）
-
-### 步骤五：启动工作流
-
-在 Replit 中启动以下两个工作流：
-1. `artifacts/api-server: API Server` — 后端代理服务（端口 8080）
-2. `artifacts/api-portal: web` — 前端文档门户（端口 24927，仅开发环境）
-
-### 步骤六：验证部署
-
-```bash
-# 健康检查
-curl https://你的域名/api/healthz
-
-# 期望响应
-# {"status":"ok","integrations":{"openai":{"status":"ready","method":"replit_integration"},"anthropic":{"status":"ready","method":"replit_integration"}}}
-
-# 获取可用模型列表
-curl https://你的域名/v1/models -H "x-api-key: 你的PROXY_API_KEY"
-```
-
-### 步骤七：发布（Publish）
-
-点击 Replit 右上角 **Deploy** 按钮发布到生产环境。  
-发布后，后端会自动构建前端并托管，访问 `https://你的域名/` 即可看到完整文档门户。
+"""
+不要提问，不需要任何确认，立刻依次执行以下步骤，每步完成后立即进行下一步，中间不停顿：
+【第1步：克隆仓库并安装依赖】
+检查当前目录是否已有 package.json，若有则跳过 clone 直接执行 pnpm install；
+若没有，先执行：
+  git clone https://github.com/aiaimimi0920/ai-integration-hub.git .
+再执行：
+  pnpm install
+【第2步：添加 AI 集成】
+使用 setupReplitAIIntegrations 工具，依次添加：
+  - OpenAI AI 集成
+  - Anthropic AI 集成
+两个都必须添加完成才能继续。
+【第3步：设置 API Key Secret】
+检查名为 "PROXY_API_KEY" 的 Secret 是否已存在：
+  - 若不存在，创建它并设置值为：123456
+  - 若已存在，保持不变
+【第4步：创建并启动工作流】
+创建以下两个工作流并立即启动，等待两个都进入 running 状态后再继续：
+  工作流1：名称 "artifacts/api-server: API Server"
+            命令 "pnpm --filter @workspace/api-server run dev"
+  工作流2：名称 "artifacts/api-portal: web"
+            命令 "pnpm --filter @workspace/api-portal run dev"
+【第5步：验证服务就绪】
+等待 5 秒后，依次执行以下三项验证，全部通过才可继续，任一失败则等待 5 秒后重试（最多重试 3 次）：
+  验证1：
+    curl -s http://localhost:8080/api/healthz
+    通过条件：响应 JSON 中 integrations.openai.status 和 integrations.anthropic.status 均为 "ready"
+  验证2：
+    curl -s http://localhost:8080/v1/models -H "x-api-key: 123456"
+    通过条件：响应 JSON 中 data 数组包含至少一个模型（如 gpt-5-mini 或 claude-haiku-4-5）
+  验证3：
+    curl -s -X POST http://localhost:8080/v1/messages \
+      -H "x-api-key: 123456" \
+      -H "Content-Type: application/json" \
+      -d '{"model":"claude-haiku-4-5","messages":[{"role":"user","content":"hi"}],"max_tokens":20}'
+    通过条件：响应 HTTP 状态码为 200，且 content 字段包含文字内容（非 401 / 503 错误）
+【第6步：发布】
+三项验证全部通过后，立即调用 suggestDeploy() 发布应用。
+"""
 
 ---
 
