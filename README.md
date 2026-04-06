@@ -1,90 +1,110 @@
 # AI Integration Hub
 
-A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models.
-
-## Endpoints
+A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models — deploy on Replit in one click.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/models` | List all supported models |
-| POST | `/v1/chat/completions` | OpenAI-compatible (supports OpenAI + Claude models) |
-| POST | `/v1/messages` | Anthropic native format (supports Claude + OpenAI models) |
+| POST | `/v1/chat/completions` | OpenAI-compatible format (supports OpenAI + Claude) |
+| POST | `/v1/messages` | Anthropic native format (supports Claude + OpenAI) |
 
-**Auth:** `Authorization: Bearer 123456` or `x-api-key: 123456` (default key, change via `PROXY_API_KEY` secret)
+**Auth:** `Authorization: Bearer 123456` or `x-api-key: 123456`  
+**Default key:** `123456` — override by adding a `PROXY_API_KEY` secret.
+
+---
+
+## 一键部署 / One-Click Deploy
+
+[![Run on Replit](https://replit.com/badge/github/aiaimimi0920/ai-integration-hub)](https://replit.com/new/github/aiaimimi0920/ai-integration-hub)
+
+点击上方按钮在 Replit 创建项目后，将下方提示词完整复制，粘贴给你的 **Replit Agent**，Agent 会自动完成全部配置和发布。
+
+> After clicking the button, copy the prompt below and paste it to your **Replit Agent** — it will handle everything automatically.
+
+---
+
+## 🤖 Agent 一键完成提示词
+
+> 复制下方全部内容 → 打开 Replit 项目的 Agent 面板 → 粘贴 → 等待完成
+
+```
+你的任务是在当前 Replit 项目中完成 AI 反代网关的完整部署和配置，请按以下步骤依次执行：
+
+【第一步：安装依赖】
+执行 pnpm install 确保所有依赖已安装。
+
+【第二步：配置 AI 集成（最关键）】
+使用 setupReplitAIIntegrations 工具，为当前项目添加以下两个集成：
+- OpenAI AI 集成（自动注入 AI_INTEGRATIONS_OPENAI_API_KEY 和 AI_INTEGRATIONS_OPENAI_BASE_URL）
+- Anthropic AI 集成（自动注入 AI_INTEGRATIONS_ANTHROPIC_API_KEY 和 AI_INTEGRATIONS_ANTHROPIC_BASE_URL）
+
+【第三步：配置环境变量】
+检查 Secret PROXY_API_KEY 是否存在，不存在则设为 "123456"。
+
+【第四步：启动 Workflows】
+确保以下两个 workflow 正在运行（不存在则创建，已存在则重启）：
+- 名称 "artifacts/api-server: API Server"，命令：pnpm --filter @workspace/api-server run dev
+- 名称 "artifacts/api-portal: web"，命令：pnpm --filter @workspace/api-portal run dev
+
+【第五步：验证】
+执行以下验证，全部通过后才算完成：
+
+1. curl http://localhost:8080/api/healthz
+   预期：{"status":"ok","integrations":{"openai":{"status":"ready"},"anthropic":{"status":"ready"}}}
+
+2. curl http://localhost:8080/v1/models -H "x-api-key: 123456"
+   预期：返回包含 gpt-5.2、claude-sonnet-4-6 等模型的列表
+
+3. curl -X POST http://localhost:8080/v1/messages \
+   -H "x-api-key: 123456" \
+   -H "Content-Type: application/json" \
+   -d '{"model":"claude-haiku-4-5","messages":[{"role":"user","content":"hi"}],"max_tokens":20}'
+   预期：返回 Claude 真实回复内容（非 401/503 错误）
+
+【第六步：发布】
+验证全部通过后，调用 suggestDeploy() 将项目发布为生产环境。
+
+【注意】
+- 第二步集成配置是核心，缺少会导致生成接口返回 503
+- API Server 端口固定为 8080
+- 默认网关密钥 123456，支持 Authorization: Bearer 123456 和 x-api-key: 123456
+```
+
+---
 
 ## Supported Models
 
 | Provider | Models |
 |----------|--------|
-| OpenAI | gpt-5.2, gpt-5-mini, gpt-5-nano, o4-mini, o3 |
-| Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 |
-
----
-
-## One-Click Deploy
-
-[![Run on Replit](https://replit.com/badge/github/aiaimimi0920/ai-integration-hub)](https://replit.com/new/github/aiaimimi0920/ai-integration-hub)
-
-### After deploying — configure AI provider credentials (pick one method):
-
-#### Method 1 — Replit Agent (fully automatic, recommended)
-
-Open the **AI / Agent** panel in your Replit project and paste this prompt:
-
-```
-请帮我配置这个 Replit 项目的 AI 集成：
-1. 在 Tools → Integrations 中添加 OpenAI AI 集成
-2. 在 Tools → Integrations 中添加 Anthropic AI 集成
-3. 完成后重启 "API Server" workflow
-
-这会自动注入 AI_INTEGRATIONS_OPENAI_API_KEY、AI_INTEGRATIONS_OPENAI_BASE_URL、AI_INTEGRATIONS_ANTHROPIC_API_KEY、AI_INTEGRATIONS_ANTHROPIC_BASE_URL 环境变量，让 AI 反代网关正常工作。
-```
-
-The Agent will configure everything automatically. No manual steps needed.
-
-#### Method 2 — Replit AI Integrations (manual, free)
-
-Go to **Tools → Integrations** in your Repl, then add:
-- ✅ **OpenAI**
-- ✅ **Anthropic**
-
-Then restart the **API Server** workflow. Done.
-
-#### Method 3 — Your own API Keys (Secrets)
-
-In your Repl, open the **Secrets** tab (🔒 padlock icon in the sidebar) and add:
-- `OPENAI_API_KEY` — your OpenAI API key
-- `ANTHROPIC_API_KEY` — your Anthropic API key
-
-Then restart the **API Server** workflow. Done.
-
-> **Tip:** After setup, open the portal at your app's URL — it automatically detects your configuration status and shows the setup prompt if anything is missing.
-
-> **No proxy key needed.** The default gateway key is `123456`. Override it by adding a `PROXY_API_KEY` secret.
+| OpenAI | `gpt-5.2` · `gpt-5-mini` · `gpt-5-nano` · `o4-mini` · `o3` |
+| Anthropic | `claude-opus-4-6` · `claude-sonnet-4-6` · `claude-haiku-4-5` |
 
 ---
 
 ## Quick Test
 
 ```bash
+# Health check (shows integration status)
+curl https://YOUR_APP.replit.app/api/healthz
+
 # List models
 curl https://YOUR_APP.replit.app/v1/models \
-  -H "Authorization: Bearer 123456"
+  -H "x-api-key: 123456"
 
-# Chat with GPT
-curl https://YOUR_APP.replit.app/v1/chat/completions \
+# Chat with GPT (OpenAI format)
+curl -X POST https://YOUR_APP.replit.app/v1/chat/completions \
   -H "Authorization: Bearer 123456" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-5.2","messages":[{"role":"user","content":"Hello!"}]}'
 
 # Chat with Claude (OpenAI format)
-curl https://YOUR_APP.replit.app/v1/chat/completions \
+curl -X POST https://YOUR_APP.replit.app/v1/chat/completions \
   -H "Authorization: Bearer 123456" \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello!"}]}'
 
-# Claude Code style (x-api-key)
-curl https://YOUR_APP.replit.app/v1/messages \
+# Claude Code style (Anthropic native format)
+curl -X POST https://YOUR_APP.replit.app/v1/messages \
   -H "x-api-key: 123456" \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-haiku-4-5","max_tokens":256,"messages":[{"role":"user","content":"Hello!"}]}'
@@ -97,7 +117,7 @@ curl https://YOUR_APP.replit.app/v1/messages \
 1. Settings → AI Provider → Add Provider → choose **OpenAI** or **Anthropic**
 2. Base URL: `https://YOUR_APP.replit.app`
 3. API Key: `123456`
-4. Add models → chat
+4. Add models → start chatting
 
 ## Claude Code Setup
 
@@ -108,9 +128,17 @@ claude config set api-url https://YOUR_APP.replit.app
 
 ---
 
-## Change the Default Key
+## Manual Setup (if not using Agent)
 
-Add a Replit Secret named `PROXY_API_KEY` with your preferred value. The default `123456` is only used when no secret is set.
+If you prefer to configure manually, pick one method:
+
+**Option A — Replit AI Integrations (free)**  
+Tools → Integrations → add **OpenAI** + **Anthropic** → restart API Server workflow.
+
+**Option B — Your own API Keys**  
+Add secrets `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in the Secrets tab → restart API Server workflow.
+
+---
 
 ## Tech Stack
 
