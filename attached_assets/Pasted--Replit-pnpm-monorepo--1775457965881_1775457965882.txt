@@ -1,0 +1,342 @@
+你现在是一名资深全栈基础设施工程师，正在一个 Replit 的 pnpm monorepo 中直接修改现有项目并完成发布。你的目标不是写方案，而是直接落地、验证、修复，直到真实接口可用为止。
+
+重要执行原则：
+1. 先阅读现有仓库结构、现有路由、现有 artifact 配置和现有 workflow，再改代码。不要凭空假设文件内容。
+2. 不要只做页面和静态文案，必须把真实 API 跑通。
+3. 不要只验证 GET /v1/models，必须验证真正的 POST 生成接口。
+4. 所有 /v1 接口必须优先进行 Bearer Token 鉴权；鉴权失败时必须返回 JSON 401，不能返回 HTML。
+5. 所有错误响应必须是 JSON，不允许出现 Express 默认 HTML 错误页。
+6. 不要把路由写成双前缀。若 app.ts 中使用 app.use("/v1", proxyRouter)，则 proxyRouter 内部路径必须写成 "/models"、"/chat/completions"、"/messages"，不能再写 "/v1/..."。
+7. 不要硬编码一个看起来正确但实际上不可调用的模型列表后就结束。必须做真实 smoke test；如果某个模型在当前 Replit AI Integrations 环境下不可用，必须修正模型列表、门户文案和 Quick Test 示例，只保留真实可用的模型和示例。
+8. 如果你对 openai 或 @anthropic-ai/sdk 的调用方式不确定，不要猜。必须检查当前仓库锁定的依赖版本、package.json、已安装包的 typings 或现有代码，再按真实 API 写。
+9. 不要切换成“API 文档工程师 / 只输出 JSON 工具调用示例”的模式。这个任务是直接修改仓库并完成验证，不是生成工具调用 JSON 模板。
+10. 你必须在完成后给出真实执行过的验证结果摘要；如果某一步未通过，继续修复，不要提前结束。
+
+总体目标：
+在 Replit pnpm monorepo 中建立并发布一个 OpenAI + Anthropic 双兼容反代服务，包含：
+1. OpenAI 兼容接口：POST /v1/chat/completions
+2. Anthropic 原生接口：POST /v1/messages
+3. 模型列表接口：GET /v1/models
+4. 前端门户：展示 Base URL、鉴权方式、端点说明、模型列表、真实可用的 Quick Test
+5. 部署后真实可用，而不是只有前端页面能打开
+
+【环境准备】
+使用平台工具完成以下动作：
+1. 在 Replit Integrations 中添加 OpenAI 和 Anthropic AI 集成
+   通过 setupReplitAIIntegrations 完成，自动注入：
+   - AI_INTEGRATIONS_OPENAI_BASE_URL
+   - AI_INTEGRATIONS_OPENAI_API_KEY
+   - AI_INTEGRATIONS_ANTHROPIC_BASE_URL
+   - AI_INTEGRATIONS_ANTHROPIC_API_KEY
+2. 通过 requestEnvVar 请求 Secret：
+   - PROXY_API_KEY：任意字符串，作为 Bearer Token
+   - SESSION_SECRET：如果已存在则跳过
+3. 若依赖缺失，更新 artifacts/api-server/package.json：
+   - openai: ^6
+   - @anthropic-ai/sdk: ^0.82
+4. 安装依赖并确保 workflow 可启动
+
+【API Server 修改】
+目标文件优先检查并修改：
+- artifacts/api-server/src/routes/proxy.ts
+- artifacts/api-server/src/app.ts
+
+实现要求如下。
+
+一、统一鉴权与统一错误处理
+1. 在 /v1 路由范围内统一使用 requireProxyBearer 中间件。
+2. Bearer Token 必须严格校验 Authorization 头，格式为：
+   Authorization: Bearer ${PROXY_API_KEY}
+3. 缺少 token 或 token 错误时，所有 /v1 接口都返回：
+   HTTP 401
+   Content-Type: application/json
+   JSON 结构：
+   {
+     "error": {
+       "message": "Unauthorized: invalid or missing Bearer token",
+       "type": "authentication_error"
+     }
+   }
+4. 所有参数校验失败、模型不支持、上游错误、内部异常，都必须返回 JSON，不能返回 HTML。
+5. 增加统一 JSON 错误处理中间件，覆盖 Express 默认错误页。
+6. /v1 下不存在的路径要返回 JSON 404，不要落回门户 HTML。
+
+二、app.ts 挂载方式
+在 artifacts/api-server/src/app.ts 中确保：
+1. app.use(express.json({ limit: "50mb" }));
+2. app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+3. app.use("/api", router);
+4. app.use("/v1", proxyRouter);
+5. 如果已有全局错误处理，确保它不会把 /v1 错误渲染成 HTML。
+
+三、模型目录与单一数据源
+在 API Server 中建立单一数据源，例如 SUPPORTED_MODELS 常量，作为：
+1. /v1/models 的返回来源
+2. provider 分发来源
+3. 前端门户模型展示来源
+4. Quick Test 示例来源
+
+优先目标模型：
+OpenAI：
+- gpt-5.2
+- gpt-5-mini
+- gpt-5-nano
+- o4-mini
+- o3
+
+Anthropic：
+- claude-opus-4-6
+- claude-sonnet-4-6
+- claude-haiku-4-5
+
+但不要盲信这份列表。实现后必须做真实 smoke test。
+如果当前 Replit AI Integrations 实际拒绝其中任一模型：
+1. 查明实际错误
+2. 调整 SUPPORTED_MODELS 为真实可用模型
+3. 同步更新 /v1/models、门户展示、Quick Test 文案
+4. 不要把不可用模型继续展示为可用
+
+四、GET /v1/models
+在 proxyRouter 中实现相对路径 GET /models。
+要求：
+1. 先鉴权
+2. 返回 OpenAI 风格 JSON：
+   {
+     "object": "list",
+     "data": [
+       { "id": "...", "object": "model", "created": <unix>, "owned_by": "openai|anthropic" }
+     ]
+   }
+3. created 可以统一使用当前构建时间或固定 unix 时间，但结构必须正确
+4. 返回内容必须来自单一模型目录，不允许写两份不同来源
+
+五、POST /v1/chat/completions
+在 proxyRouter 中实现相对路径 POST /chat/completions。
+这是 OpenAI 兼容接口，要求支持 OpenAI 模型和 Claude 模型。
+
+基础规则：
+1. 先鉴权，再校验 body，再调用 provider。
+2. 请求 Content-Type 为 application/json。
+3. 缺少 model 时返回 JSON：
+   {
+     "error": {
+       "message": "model is required",
+       "type": "invalid_request_error"
+     }
+   }
+4. model 不在支持列表时返回 JSON 400，明确说明 unsupported model。
+5. 按模型分发：
+   - model 以 gpt- 或 o 开头 -> OpenAI provider
+   - model 以 claude- 开头 -> Anthropic provider
+
+OpenAI provider 路径：
+1. 使用 OpenAI SDK 调用真实 chat/completions 能力；不要猜 API，必须按当前安装版本的真实 SDK 写。
+2. 非流式时返回 OpenAI 原始 JSON 或严格兼容 JSON。
+3. 流式时返回标准 SSE，直接转发或兼容转发 OpenAI chunk。
+4. 出错时捕获并转成 JSON 错误，不得返回 HTML。
+
+Anthropic provider 路径，需要把 OpenAI Chat Completions 请求格式转换成 Anthropic Messages 格式：
+1. 消息转换：
+   - 普通 user / assistant / system 文本消息正确映射
+   - role: "tool" 转换为 Anthropic tool_result 内容块
+   - assistant 中的 tool_calls 转换为 tool_use 内容块
+2. tools 转换：
+   - OpenAI tools[].function.parameters -> Anthropic input_schema
+3. tool_choice 转换：
+   - required -> any
+   - auto -> auto
+   - 指定函数名时映射为 Anthropic 对应选择方式；如果 SDK 需要明确结构，按真实 SDK 写
+4. 响应转换：
+   - Anthropic 文本响应转换为 OpenAI chat completion JSON
+   - Anthropic tool_use 块转换为 OpenAI tool_calls
+   - stop_reason: "tool_use" -> finish_reason: "tool_calls"
+5. 非流式时：
+   - 如果当前 Anthropic SDK/平台限制要求内部使用 stream().finalMessage()，可以这样做
+   - 但最终返回给客户端必须是合法 OpenAI chat completion JSON
+6. 流式时：
+   - 返回标准 SSE
+   - Header 至少包含：
+     - Content-Type: text/event-stream
+     - Cache-Control: no-cache, no-transform
+     - Connection: keep-alive
+     - X-Accel-Buffering: no
+   - 调用 res.flushHeaders()
+   - 把 Anthropic 事件流转换为 OpenAI chat.completion.chunk 格式
+   - 若出现工具调用增量，正确拼接到 function.arguments
+   - 每 5 秒发送一次 `: keepalive\n\n`
+   - req.on("close") 时及时清理 keepalive 和上游流
+   - 必须用 try/finally 防止连接断开时产生 500
+
+六、POST /v1/messages
+在 proxyRouter 中实现相对路径 POST /messages。
+这是 Anthropic Messages 原生接口，要求支持 Claude 模型和 OpenAI 模型。
+
+基础规则：
+1. 先鉴权，再校验 body，再调用 provider
+2. 接受 Anthropic Messages API 原生请求结构：
+   - system
+   - messages
+   - tools
+   - tool_choice
+   - max_tokens
+   - stream
+   - 以及透传的 cache_control
+3. model 不支持时返回 JSON 400
+
+Claude provider 路径：
+1. 尽可能直接透传到 Anthropic SDK
+2. 非流式时返回合法 Anthropic Message JSON
+3. 流式时透传或兼容转发 Anthropic SSE 事件，至少保证：
+   - message_start
+   - content_block_start
+   - content_block_delta
+   - content_block_stop
+   - message_delta
+   - message_stop
+   - ping
+4. 出错时返回 JSON，不要返回 HTML
+
+OpenAI provider 路径，需要把 Anthropic Messages 请求格式转换成 OpenAI 请求格式：
+1. messages 转换：
+   - text -> OpenAI message content
+   - tool_result -> role: "tool"
+   - tool_use -> assistant tool_calls
+2. tools 转换：
+   - input_schema -> function.parameters
+3. tool_choice 转换到 OpenAI 兼容结构
+4. 响应转换：
+   - OpenAI 响应 -> Anthropic Message JSON
+   - content[]、stop_reason、usage.input_tokens/output_tokens 结构正确
+5. 流式时：
+   - 将 OpenAI 流式输出合成为 Anthropic SSE 事件序列
+   - 工具调用时生成对应 tool_use 事件块
+   - 保持事件顺序正确
+
+七、cache 机制
+1. Anthropic 原生支持 cache_control，代理必须透传 system 和 messages 中的 cache_control 字段，不要丢失。
+2. OpenAI gpt-5 系列的 prompt prefix cache 是提供商原生行为，无需额外注入参数。
+3. 前端门户中可以说明这件事，但不要伪造代理层实现不存在的缓存逻辑。
+
+八、日志与可诊断性
+实现最小必要日志，便于定位线上问题：
+1. 为每个 /v1 请求生成 request id
+2. 记录 endpoint、provider、model、stream、status code、耗时
+3. 出错时记录上游 provider 的状态码和错误消息
+4. 不要打印密钥
+
+【前端门户】
+优先检查是否已有 artifact；如果没有，再创建：
+createArtifact({ artifactType: "react-vite", slug: "api-portal", previewPath: "/", title: "API Portal" })
+
+前端要求：
+1. 顶部 Header：图标 + 标题 + 在线状态指示器
+2. 在线状态检查必须请求 /api/healthz，不是 /health，也不是 /healthz
+3. Connection Details：
+   - Base URL = window.location.origin
+   - Authorization = Bearer YOUR_PROXY_API_KEY
+   - 两项都带复制按钮
+4. API Endpoints：
+   - GET /v1/models
+   - POST /v1/chat/completions
+   - POST /v1/messages
+   - 每项显示 METHOD badge、完整 URL、接口类型标签、复制按钮和简短说明
+5. Available Models：
+   - 必须来自与后端同一份真实可用模型数据
+   - 如果后端实际修正了模型列表，前端必须同步
+6. Quick Test：
+   - 只展示真实 smoke test 已验证成功的示例
+   - 至少展示：
+     - GET /v1/models
+     - 一个 OpenAI 模型成功调用示例
+     - 一个 Anthropic 模型成功调用示例
+   - 如果 `claude-*` 通过 /v1/chat/completions 已验证成功，可以展示这个示例
+   - 如果没有验证通过，不要展示它
+7. 复制按钮：
+   - navigator.clipboard.writeText
+   - 失败时有 textarea fallback
+   - 复制后显示 "Copied!" 2 秒
+8. UI：
+   - 纯内联样式
+   - 深色主题 hsl(222,47%,11%)
+   - 不依赖外部 UI 库
+9. Footer：
+   - 简短技术栈说明
+   - 不要写不真实的能力说明
+
+【Artifact 配置】
+检查：
+- artifacts/api-server/.replit-artifact/artifact.toml
+
+要求：
+1. 通过 verifyAndReplaceArtifactToml 更新，不直接盲改
+2. paths 数组必须包含 "/v1"
+3. 不要破坏现有 /api 路径和现有 artifact 配置
+
+【验收与自纠错要求】
+这是最重要的部分。你必须真的跑验证，未通过就继续修。
+
+在本地 workflow 或可访问地址上，至少执行以下验证：
+1. GET /api/healthz
+   - 期望 200
+   - 返回 {"status":"ok"} 或等价 JSON
+2. GET /v1/models，带正确 token
+   - 期望 200
+   - 返回模型列表 JSON
+3. GET /v1/models，不带 token
+   - 期望 401 JSON
+4. GET /v1/models，带错误 token
+   - 期望 401 JSON
+5. POST /v1/chat/completions，OpenAI 模型，非流式
+   - 发送最小可用请求
+   - 期望 200 JSON，能返回文本
+6. POST /v1/chat/completions，Claude 模型，非流式
+   - 如果你宣称支持，必须验证通过
+   - 期望 200 JSON，能返回文本
+7. POST /v1/messages，Claude 模型，非流式
+   - 期望 200 JSON，能返回文本
+8. POST /v1/chat/completions，不带 token
+   - 期望 401 JSON，而不是 400/HTML
+9. POST /v1/chat/completions，带错误 token
+   - 期望 401 JSON，而不是 400/HTML
+10. POST /v1/chat/completions，body 为 {}
+   - 期望 400 JSON，message 为 model is required 或等价明确错误
+11. POST /v1/messages，不带 token
+   - 期望 401 JSON
+12. 至少一个流式 smoke test：
+   - OpenAI 或 Claude 任一
+   - 期望返回 text/event-stream
+   - 至少能收到首个有效事件
+   - 连接关闭时不会报 500
+
+如果任一验证失败：
+1. 不要结束
+2. 阅读错误输出
+3. 修复实现
+4. 重新验证
+5. 直到通过
+
+【强约束：禁止出现以下问题】
+1. /v1/models 可用，但 /v1/chat/completions 一调用就 HTML 400
+2. POST 路由未先鉴权，导致错误 token 时不是 401 JSON
+3. app.use("/v1", proxyRouter) 与 router 内部 "/v1/..." 重复，产生双前缀
+4. 前端 Quick Test 展示了没有真实验证过的示例
+5. 模型列表与真实可调用模型不一致
+6. Express 默认错误页泄漏到 API
+7. 只创建门户页面，不修真实后端
+8. 只做 happy path，不做错误路径验证
+
+【交付要求】
+完成后：
+1. 重启 workflow：
+   - artifacts/api-server: API Server
+   - artifacts/api-portal: web
+2. 用真实 curl 或等价命令完成上述验收
+3. presentArtifact({ artifactId: "artifacts/api-portal" })
+4. suggestDeploy()
+
+最终输出给用户时必须包含：
+1. 修改了哪些关键文件
+2. 哪些端点已真实验证通过
+3. 使用了哪些最终保留的模型
+4. 若某些原始目标模型因当前集成环境不支持而被替换，明确说明替换结果
+5. 不要声称“已支持”任何未实际验证通过的功能

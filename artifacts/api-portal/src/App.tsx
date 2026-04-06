@@ -150,11 +150,28 @@ export default function App() {
   const curlExample = `curl ${baseUrl}/v1/models \\
   -H "Authorization: Bearer YOUR_PROXY_API_KEY"`;
 
+  const curlOpenAIExample = `curl ${baseUrl}/v1/chat/completions \\
+  -H "Authorization: Bearer YOUR_PROXY_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-5.2",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'`;
+
   const curlChatExample = `curl ${baseUrl}/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_PROXY_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "claude-sonnet-4-6",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'`;
+
+  const curlMessagesExample = `curl ${baseUrl}/v1/messages \\
+  -H "Authorization: Bearer YOUR_PROXY_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "claude-haiku-4-5",
+    "max_tokens": 256,
     "messages": [{"role": "user", "content": "Hello!"}]
   }'`;
 
@@ -338,8 +355,10 @@ export default function App() {
           </h2>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {[
-              { title: "List models", code: curlExample },
-              { title: "Chat completion (Claude via OpenAI format)", code: curlChatExample },
+              { title: "List models (GET /v1/models)", code: curlExample },
+              { title: "OpenAI model — gpt-5.2 (POST /v1/chat/completions)", code: curlOpenAIExample },
+              { title: "Anthropic model via OpenAI format — claude-sonnet-4-6 (POST /v1/chat/completions)", code: curlChatExample },
+              { title: "Anthropic native format — claude-haiku-4-5 (POST /v1/messages)", code: curlMessagesExample },
             ].map((ex, i) => (
               <div key={i} style={{ background: CARD, border: `1px solid ${CARD_BORDER}`, borderRadius: "12px", overflow: "hidden" }}>
                 <div style={{

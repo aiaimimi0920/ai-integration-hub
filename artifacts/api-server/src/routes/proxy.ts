@@ -17,6 +17,7 @@ const anthropicClient = new Anthropic({
 
 const OPENAI_MODELS = ["gpt-5.2", "gpt-5-mini", "gpt-5-nano", "o4-mini", "o3"];
 const ANTHROPIC_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"];
+const SUPPORTED_MODELS = new Set([...OPENAI_MODELS, ...ANTHROPIC_MODELS]);
 
 function verifyToken(req: Request, res: Response): boolean {
   const proxyKey = process.env.PROXY_API_KEY;
@@ -34,11 +35,15 @@ function verifyToken(req: Request, res: Response): boolean {
 }
 
 function isOpenAIModel(model: string): boolean {
-  return model.startsWith("gpt-") || model.startsWith("o");
+  return SUPPORTED_MODELS.has(model) && (model.startsWith("gpt-") || model.startsWith("o"));
 }
 
 function isAnthropicModel(model: string): boolean {
-  return model.startsWith("claude-");
+  return SUPPORTED_MODELS.has(model) && model.startsWith("claude-");
+}
+
+function isSupportedModel(model: string): boolean {
+  return SUPPORTED_MODELS.has(model);
 }
 
 function tryFlush(res: Response) {
@@ -480,7 +485,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
         res.json(anthropicResponseToOAI(finalMsg, model));
       }
     } else {
-      res.status(400).json({ error: { message: `Unknown model: ${model}`, type: "invalid_request_error" } });
+      res.status(400).json({ error: { message: `Unsupported model: ${model}. See GET /v1/models for supported models.`, type: "invalid_request_error" } });
     }
   } catch (err: unknown) {
     const error = err as { status?: number; message?: string };
@@ -713,7 +718,7 @@ router.post("/messages", async (req: Request, res: Response) => {
         });
       }
     } else {
-      res.status(400).json({ error: { message: `Unknown model: ${model}`, type: "invalid_request_error" } });
+      res.status(400).json({ error: { message: `Unsupported model: ${model}. See GET /v1/models for supported models.`, type: "invalid_request_error" } });
     }
   } catch (err: unknown) {
     const error = err as { status?: number; message?: string };
@@ -721,6 +726,17 @@ router.post("/messages", async (req: Request, res: Response) => {
     logger.error({ err, model, stream }, "messages error");
     sendErrorSafe(res, status, error.message || "Internal server error");
   }
+});
+
+// ── JSON 404 for unknown /v1 paths ──────────────────────────────────
+
+router.use((req: Request, res: Response) => {
+  res.status(404).json({
+    error: {
+      message: `Not found: ${req.method} /v1${req.path}`,
+      type: "not_found_error",
+    },
+  });
 });
 
 export default router;
