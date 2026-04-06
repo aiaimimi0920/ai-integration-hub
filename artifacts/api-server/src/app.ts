@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import path from "path";
 import router from "./routes";
 import proxyRouter from "./routes/proxy";
 import { logger } from "./lib/logger";
@@ -32,6 +33,15 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 app.use("/api", router);
 app.use("/v1", proxyRouter);
+
+// In production: serve the portal's static build and SPA fallback
+if (process.env.NODE_ENV === "production") {
+  const portalDist = path.join(process.cwd(), "artifacts/api-portal/dist/public");
+  app.use(express.static(portalDist));
+  app.get("*", (_req: Request, res: Response) => {
+    res.sendFile(path.join(portalDist, "index.html"));
+  });
+}
 
 // Global JSON error handler — overrides Express default HTML error page
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

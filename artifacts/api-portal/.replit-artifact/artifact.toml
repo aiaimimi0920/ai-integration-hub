@@ -17,15 +17,6 @@ localPort = 24927
 [services.development]
 run = "pnpm --filter @workspace/api-portal run dev"
 
-[services.production]
-build = [ "pnpm", "--filter", "@workspace/api-portal", "run", "build" ]
-publicDir = "artifacts/api-portal/dist/public"
-serve = "static"
-
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
-
 [services.env]
 PORT = "24927"
 BASE_PATH = "/"
