@@ -14,6 +14,13 @@ const CODE_BG = "hsl(222,47%,8%)";
 const OPENAI_MODELS = ["gpt-5.2", "gpt-5-mini", "gpt-5-nano", "o4-mini", "o3"];
 const ANTHROPIC_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"];
 
+const AGENT_SETUP_PROMPT = `请帮我配置这个 Replit 项目的 AI 集成：
+1. 在 Tools → Integrations 中添加 OpenAI AI 集成
+2. 在 Tools → Integrations 中添加 Anthropic AI 集成
+3. 完成后重启 "API Server" workflow
+
+这会自动注入 AI_INTEGRATIONS_OPENAI_API_KEY、AI_INTEGRATIONS_OPENAI_BASE_URL、AI_INTEGRATIONS_ANTHROPIC_API_KEY、AI_INTEGRATIONS_ANTHROPIC_BASE_URL 环境变量，让 AI 反代网关正常工作。`;
+
 const ENDPOINTS = [
   {
     method: "GET",
@@ -267,30 +274,52 @@ export default function App() {
               </div>
 
               {/* Instructions */}
-              <div>
-                <p style={{ margin: "0 0 12px", fontSize: "13px", color: TEXT, fontWeight: 600 }}>
-                  Choose one of the following setup methods:
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <p style={{ margin: 0, fontSize: "13px", color: TEXT, fontWeight: 600 }}>
+                  Choose a setup method — fastest first:
                 </p>
 
-                {/* Method A */}
-                <div style={{ background: CODE_BG, borderRadius: "8px", padding: "14px 16px", marginBottom: "10px" }}>
-                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#22c55e", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Method A — Replit AI Integrations (free, recommended)</div>
+                {/* Method 0 — Agent prompt (fastest) */}
+                <div style={{ background: CODE_BG, borderRadius: "8px", padding: "14px 16px", border: "1px solid #22c55e33" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                    <div style={{ fontSize: "12px", fontWeight: 700, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      🤖 Method 1 — Replit Agent (fully automatic, recommended)
+                    </div>
+                  </div>
+                  <p style={{ margin: "0 0 10px", fontSize: "12px", color: MUTED, lineHeight: 1.6 }}>
+                    Open the <b style={{ color: TEXT }}>AI / Agent</b> panel in your Replit project and paste this prompt. The Agent will configure everything automatically.
+                  </p>
+                  <div style={{ position: "relative" }}>
+                    <pre style={{
+                      margin: 0, padding: "12px 14px", background: "hsl(222,47%,6%)", borderRadius: "6px",
+                      fontSize: "12px", color: "#a5f3fc", whiteSpace: "pre-wrap", wordBreak: "break-word",
+                      border: "1px solid #22c55e22", lineHeight: 1.6,
+                    }}>{AGENT_SETUP_PROMPT}</pre>
+                    <div style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
+                      <CopyButton text={AGENT_SETUP_PROMPT} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Method 2 — Manual Integrations */}
+                <div style={{ background: CODE_BG, borderRadius: "8px", padding: "14px 16px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#3b82f6", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Method 2 — Replit AI Integrations (manual, free)</div>
                   <ol style={{ margin: 0, paddingLeft: "18px", color: MUTED, fontSize: "13px", lineHeight: 1.8 }}>
-                    <li>In your Replit project, click <b style={{ color: TEXT }}>Tools → Integrations</b></li>
-                    <li>Search for <b style={{ color: OPENAI_COLOR }}>OpenAI</b> and click Enable</li>
-                    <li>Search for <b style={{ color: ANTHROPIC_COLOR }}>Anthropic</b> and click Enable</li>
-                    <li>Restart the <b style={{ color: TEXT }}>API Server</b> workflow — done!</li>
+                    <li>In your Replit project click <b style={{ color: TEXT }}>Tools → Integrations</b></li>
+                    <li>Search for <b style={{ color: OPENAI_COLOR }}>OpenAI</b> → Enable</li>
+                    <li>Search for <b style={{ color: ANTHROPIC_COLOR }}>Anthropic</b> → Enable</li>
+                    <li>Restart the <b style={{ color: TEXT }}>API Server</b> workflow</li>
                   </ol>
                 </div>
 
-                {/* Method B */}
+                {/* Method 3 — Own API Keys */}
                 <div style={{ background: CODE_BG, borderRadius: "8px", padding: "14px 16px" }}>
-                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#a855f7", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Method B — Your own API Keys (Secrets)</div>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#a855f7", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Method 3 — Your own API Keys</div>
                   <ol style={{ margin: 0, paddingLeft: "18px", color: MUTED, fontSize: "13px", lineHeight: 1.8 }}>
-                    <li>In your Replit project, click the <b style={{ color: TEXT }}>🔒 Secrets</b> tab (padlock icon in sidebar)</li>
-                    <li>Add secret: <code style={{ color: OPENAI_COLOR }}>OPENAI_API_KEY</code> = your OpenAI key</li>
-                    <li>Add secret: <code style={{ color: ANTHROPIC_COLOR }}>ANTHROPIC_API_KEY</code> = your Anthropic key</li>
-                    <li>Restart the <b style={{ color: TEXT }}>API Server</b> workflow — done!</li>
+                    <li>Open the <b style={{ color: TEXT }}>🔒 Secrets</b> tab in your Replit project</li>
+                    <li>Add <code style={{ color: OPENAI_COLOR }}>OPENAI_API_KEY</code> = your OpenAI key</li>
+                    <li>Add <code style={{ color: ANTHROPIC_COLOR }}>ANTHROPIC_API_KEY</code> = your Anthropic key</li>
+                    <li>Restart the <b style={{ color: TEXT }}>API Server</b> workflow</li>
                   </ol>
                 </div>
               </div>

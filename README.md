@@ -27,7 +27,22 @@ A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models.
 
 ### After deploying — configure AI provider credentials (pick one method):
 
-#### Method A — Replit AI Integrations (free, billed to Replit credits)
+#### Method 1 — Replit Agent (fully automatic, recommended)
+
+Open the **AI / Agent** panel in your Replit project and paste this prompt:
+
+```
+请帮我配置这个 Replit 项目的 AI 集成：
+1. 在 Tools → Integrations 中添加 OpenAI AI 集成
+2. 在 Tools → Integrations 中添加 Anthropic AI 集成
+3. 完成后重启 "API Server" workflow
+
+这会自动注入 AI_INTEGRATIONS_OPENAI_API_KEY、AI_INTEGRATIONS_OPENAI_BASE_URL、AI_INTEGRATIONS_ANTHROPIC_API_KEY、AI_INTEGRATIONS_ANTHROPIC_BASE_URL 环境变量，让 AI 反代网关正常工作。
+```
+
+The Agent will configure everything automatically. No manual steps needed.
+
+#### Method 2 — Replit AI Integrations (manual, free)
 
 Go to **Tools → Integrations** in your Repl, then add:
 - ✅ **OpenAI**
@@ -35,7 +50,7 @@ Go to **Tools → Integrations** in your Repl, then add:
 
 Then restart the **API Server** workflow. Done.
 
-#### Method B — Your own API Keys (Secrets)
+#### Method 3 — Your own API Keys (Secrets)
 
 In your Repl, open the **Secrets** tab (🔒 padlock icon in the sidebar) and add:
 - `OPENAI_API_KEY` — your OpenAI API key
@@ -43,7 +58,7 @@ In your Repl, open the **Secrets** tab (🔒 padlock icon in the sidebar) and ad
 
 Then restart the **API Server** workflow. Done.
 
-> **Tip:** After setup, open the portal at your app's URL — it shows a live status badge for each provider and step-by-step instructions if anything is missing.
+> **Tip:** After setup, open the portal at your app's URL — it automatically detects your configuration status and shows the setup prompt if anything is missing.
 
 > **No proxy key needed.** The default gateway key is `123456`. Override it by adding a `PROXY_API_KEY` secret.
 
