@@ -28,7 +28,16 @@ A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models — 
 在 Replit 新建一个空白项目，打开 **Agent 面板**，粘贴下方短提示词：
 
 ```
-不要提问，不需要确认，直接执行：访问 https://raw.githubusercontent.com/aiaimimi0920/ai-integration-hub/main/DEPLOY.md    ，完整阅读后立刻逐步执行其中所有操作，直到发布完成。
+不要提问，不需要任何确认，直接依次执行以下 6 步，每步完成后立刻进行下一步：
+
+1. 运行命令：git clone https://github.com/aiaimimi0920/ai-integration-hub.git . && pnpm install
+2. 用 setupReplitAIIntegrations 工具依次添加 OpenAI AI 集成 和 Anthropic AI 集成
+3. 检查 Secret "PROXY_API_KEY" 是否存在，不存在则设为 123456
+4. 创建并启动两个 workflow：
+   - 名称 "artifacts/api-server: API Server"，命令 "pnpm --filter @workspace/api-server run dev"
+   - 名称 "artifacts/api-portal: web"，命令 "pnpm --filter @workspace/api-portal run dev"
+5. 验证：curl http://localhost:8080/api/healthz（预期 openai 和 anthropic 的 status 均为 ready）
+6. 验证通过后调用 suggestDeploy() 发布
 ```
 
 > 完整部署步骤详见 [DEPLOY.md](./DEPLOY.md)
