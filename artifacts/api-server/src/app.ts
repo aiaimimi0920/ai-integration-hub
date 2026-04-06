@@ -38,15 +38,15 @@ app.use("/v1", proxyRouter);
 if (process.env.NODE_ENV === "production") {
   const portalDist = path.join(process.cwd(), "artifacts/api-portal/dist/public");
   app.use(express.static(portalDist));
-  app.get("*", (_req: Request, res: Response) => {
+  app.use((_req: Request, res: Response) => {
     res.sendFile(path.join(portalDist, "index.html"));
   });
 }
 
-// Global JSON error handler — overrides Express default HTML error page
+// Global JSON error handler
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error & { status?: number; statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => {
-  const status = (err as { status?: number; statusCode?: number }).status || (err as { status?: number; statusCode?: number }).statusCode || 500;
+  const status = err.status || err.statusCode || 500;
   logger.error({ err }, "Unhandled error");
   if (!res.headersSent) {
     res.status(status).json({
