@@ -5,15 +5,53 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
-const openaiClient = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "dummy",
-});
+// ── Integration availability checks ────────────────────────────────
+function openaiReady(): boolean {
+  return !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
+}
+function anthropicReady(): boolean {
+  return !!(process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY && process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL);
+}
 
-const anthropicClient = new Anthropic({
-  baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || "dummy",
-});
+// Lazy clients — instantiated fresh so they pick up env vars added after startup
+function getOpenAIClient() {
+  return new OpenAI({
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY!,
+  });
+}
+function getAnthropicClient() {
+  return new Anthropic({
+    baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+    apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY!,
+  });
+}
+
+function requireOpenAI(res: Response): boolean {
+  if (!openaiReady()) {
+    res.status(503).json({
+      error: {
+        message: "OpenAI integration not configured. In your Replit project go to Tools → Integrations and add the OpenAI integration, then restart the server.",
+        type: "integration_error",
+      },
+    });
+    return false;
+  }
+  return true;
+}
+
+function requireAnthropic(res: Response): boolean {
+  if (!anthropicReady()) {
+    res.status(503).json({
+      error: {
+        message: "Anthropic integration not configured. In your Replit project go to Tools → Integrations and add the Anthropic integration, then restart the server.",
+        type: "integration_error",
+      },
+    });
+    return false;
+  }
+  return true;
+}
 
 const OPENAI_MODELS = ["gpt-5.2", "gpt-5-mini", "gpt-5-nano", "o4-mini", "o3"];
 const ANTHROPIC_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"];
@@ -321,6 +359,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
   try {
     if (isOpenAIModel(model)) {
       // ── OpenAI path ──
+      if (!requireOpenAI(res)) return;
       if (stream) {
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache");
@@ -333,7 +372,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
         req.on("close", () => clearInterval(keepalive));
 
         try {
-          const oaiStream = await openaiClient.chat.completions.create({
+          const oaiStream = await getOpenAIClient().chat.completions.create({
             model,
             messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
             stream: true,
@@ -358,7 +397,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
           try { res.end(); } catch { /* ignore */ }
         }
       } else {
-        const response = await openaiClient.chat.completions.create({
+        const response = await getOpenAIClient().chat.completions.create({
           model,
           messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
           stream: false,
@@ -370,6 +409,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
       }
     } else if (isAnthropicModel(model)) {
       // ── Anthropic path ──
+      if (!requireAnthropic(res)) return;
       const { system, messages: anthropicMessages } = oaiMessagesToAnthropic(messages);
       const anthropicTools = tools ? oaiToolsToAnthropic(tools) : undefined;
       const anthropicToolChoice = tool_choice ? oaiToolChoiceToAnthropic(tool_choice) : undefined;
@@ -395,7 +435,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
             choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
           })}\n\n`);
 
-          const anthropicStream = anthropicClient.messages.stream({
+          const anthropicStream = getAnthropicClient().messages.stream({
             model,
             max_tokens: maxTokens,
             messages: anthropicMessages as Anthropic.Messages.MessageParam[],
@@ -478,7 +518,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
         }
       } else {
         // Non-streaming: always buffer via stream().finalMessage()
-        const finalMsg = await anthropicClient.messages.stream({
+        const finalMsg = await getAnthropicClient().messages.stream({
           model,
           max_tokens: maxTokens,
           messages: anthropicMessages as Anthropic.Messages.MessageParam[],
@@ -568,6 +608,7 @@ router.post("/messages", async (req: Request, res: Response) => {
   try {
     if (isAnthropicModel(model)) {
       // ── Claude → Anthropic direct ──
+      if (!requireAnthropic(res)) return;
       // Use whitelist builder to strip unknown fields (e.g. context_management)
       const anthropicPayload = buildAnthropicPayload(body as Record<string, unknown>);
 
@@ -583,7 +624,7 @@ router.post("/messages", async (req: Request, res: Response) => {
         req.on("close", () => clearInterval(keepalive));
 
         try {
-          const anthropicStream = anthropicClient.messages.stream(
+          const anthropicStream = getAnthropicClient().messages.stream(
             anthropicPayload as Anthropic.Messages.MessageStreamParams
           );
 
@@ -603,13 +644,14 @@ router.post("/messages", async (req: Request, res: Response) => {
           try { res.end(); } catch { /* ignore */ }
         }
       } else {
-        const finalMsg = await anthropicClient.messages.stream(
+        const finalMsg = await getAnthropicClient().messages.stream(
           anthropicPayload as Anthropic.Messages.MessageStreamParams
         ).finalMessage();
         res.json(finalMsg);
       }
     } else if (isOpenAIModel(model)) {
       // ── OpenAI model via /v1/messages ──
+      if (!requireOpenAI(res)) return;
       const oaiMessages = anthropicMessagesToOAI(messages, system);
       const oaiTools = tools ? anthropicToolsToOAI(tools) : undefined;
       const oaiToolChoice = tool_choice ? anthropicToolChoiceToOAI(tool_choice) : undefined;
@@ -635,7 +677,7 @@ router.post("/messages", async (req: Request, res: Response) => {
 
           res.write(`event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })}\n\n`);
 
-          const oaiStream = await openaiClient.chat.completions.create({
+          const oaiStream = await getOpenAIClient().chat.completions.create({
             model,
             messages: oaiMessages as OpenAI.Chat.ChatCompletionMessageParam[],
             stream: true,
@@ -706,7 +748,7 @@ router.post("/messages", async (req: Request, res: Response) => {
           try { res.end(); } catch { /* ignore */ }
         }
       } else {
-        const response = await openaiClient.chat.completions.create({
+        const response = await getOpenAIClient().chat.completions.create({
           model,
           messages: oaiMessages as OpenAI.Chat.ChatCompletionMessageParam[],
           stream: false,
