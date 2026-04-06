@@ -360,7 +360,14 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
     [key: string]: unknown;
   };
 
-  const { model, messages, stream, tools, tool_choice, ...rest } = body;
+  // Extract token-limit fields so they never leak into `rest`.
+  // Normalise for OpenAI: new models (gpt-5.x, o-series) require max_completion_tokens.
+  // Old clients that send max_tokens are automatically upgraded.
+  const { model, messages, stream, tools, tool_choice,
+    max_tokens: _maxTokens, max_completion_tokens: _maxCompletionTokens,
+    ...rest } = body;
+  const oaiMaxCompletionTokens = _maxCompletionTokens ?? _maxTokens; // for OpenAI calls
+  const anthropicMaxTokens = (_maxTokens ?? _maxCompletionTokens ?? 8192) as number; // for Anthropic calls
 
   if (!model) {
     res.status(400).json({ error: { message: "model is required", type: "invalid_request_error" } });
@@ -392,6 +399,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
             model,
             messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
             stream: true,
+            ...(oaiMaxCompletionTokens != null ? { max_completion_tokens: oaiMaxCompletionTokens } : {}),
             ...(tools ? { tools } : {}),
             ...(tool_choice ? { tool_choice: tool_choice as OpenAI.Chat.ChatCompletionToolChoiceOption } : {}),
             ...rest,
@@ -417,6 +425,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
           model,
           messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
           stream: false,
+          ...(oaiMaxCompletionTokens != null ? { max_completion_tokens: oaiMaxCompletionTokens } : {}),
           ...(tools ? { tools } : {}),
           ...(tool_choice ? { tool_choice: tool_choice as OpenAI.Chat.ChatCompletionToolChoiceOption } : {}),
           ...rest,
@@ -429,7 +438,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
       const { system, messages: anthropicMessages } = oaiMessagesToAnthropic(messages);
       const anthropicTools = tools ? oaiToolsToAnthropic(tools) : undefined;
       const anthropicToolChoice = tool_choice ? oaiToolChoiceToAnthropic(tool_choice) : undefined;
-      const maxTokens = (body.max_tokens || body.max_completion_tokens || 8192) as number;
+      const maxTokens = anthropicMaxTokens;
 
       if (stream) {
         res.setHeader("Content-Type", "text/event-stream");
@@ -697,6 +706,7 @@ router.post("/messages", async (req: Request, res: Response) => {
             model,
             messages: oaiMessages as OpenAI.Chat.ChatCompletionMessageParam[],
             stream: true,
+            max_completion_tokens: max_tokens,
             ...(oaiTools ? { tools: oaiTools } : {}),
             ...(oaiToolChoice ? { tool_choice: oaiToolChoice as OpenAI.Chat.ChatCompletionToolChoiceOption } : {}),
           });
@@ -768,6 +778,7 @@ router.post("/messages", async (req: Request, res: Response) => {
           model,
           messages: oaiMessages as OpenAI.Chat.ChatCompletionMessageParam[],
           stream: false,
+          max_completion_tokens: max_tokens,
           ...(oaiTools ? { tools: oaiTools } : {}),
           ...(oaiToolChoice ? { tool_choice: oaiToolChoice as OpenAI.Chat.ChatCompletionToolChoiceOption } : {}),
         });
