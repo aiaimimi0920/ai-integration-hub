@@ -25,13 +25,16 @@ A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models — 
 
 ## 🤖 Agent 一键完成提示词
 
-> 复制下方全部内容 → 打开 Replit 项目的 Agent 面板 → 粘贴 → 等待完成
+> **使用方式：** 在 Replit 新建一个空白项目 → 打开 Agent 面板 → 复制下方全部内容粘贴 → 等待完成
 
 ```
-你的任务是在当前 Replit 项目中完成 AI 反代网关的完整部署和配置，请按以下步骤依次执行：
+你的任务是从 GitHub 检出 AI 反代网关项目并完成完整部署，请按以下步骤依次执行：
 
-【第一步：安装依赖】
-执行 pnpm install 确保所有依赖已安装。
+【第一步：检出项目】
+将 GitHub 仓库克隆到当前工作目录：
+git clone https://github.com/aiaimimi0920/ai-integration-hub.git .
+然后安装依赖：
+pnpm install
 
 【第二步：配置 AI 集成（最关键）】
 使用 setupReplitAIIntegrations 工具，为当前项目添加以下两个集成：
@@ -42,7 +45,7 @@ A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models — 
 检查 Secret PROXY_API_KEY 是否存在，不存在则设为 "123456"。
 
 【第四步：启动 Workflows】
-确保以下两个 workflow 正在运行（不存在则创建，已存在则重启）：
+创建并启动以下两个 workflow：
 - 名称 "artifacts/api-server: API Server"，命令：pnpm --filter @workspace/api-server run dev
 - 名称 "artifacts/api-portal: web"，命令：pnpm --filter @workspace/api-portal run dev
 
