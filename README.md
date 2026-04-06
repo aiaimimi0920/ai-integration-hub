@@ -28,7 +28,7 @@ A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models — 
 在 Replit 新建一个空白项目，打开 **Agent 面板**，粘贴下方短提示词：
 
 ```
-不要提问，不需要确认，直接执行：访问 https://raw.githubusercontent.com/aiaimimi0920/ai-integration-hub/main/DEPLOY.md，完整阅读后立刻逐步执行其中所有操作，直到发布完成。
+不要提问，不需要确认，直接执行：访问 https://raw.githubusercontent.com/aiaimimi0920/ai-integration-hub/main/DEPLOY.md    ，完整阅读后立刻逐步执行其中所有操作，直到发布完成。
 ```
 
 > 完整部署步骤详见 [DEPLOY.md](./DEPLOY.md)
