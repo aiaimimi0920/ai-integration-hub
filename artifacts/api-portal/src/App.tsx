@@ -138,10 +138,18 @@ function ProviderBadge({ label }: { label: string }) {
 
 export default function App() {
   const [online, setOnline] = useState<boolean | null>(null);
+  const [integrations, setIntegrations] = useState<{
+    openai: { status: string; method?: string };
+    anthropic: { status: string; method?: string };
+  } | null>(null);
 
   useEffect(() => {
     fetch("/api/healthz")
-      .then(r => r.ok ? setOnline(true) : setOnline(false))
+      .then(r => r.json())
+      .then(data => {
+        setOnline(true);
+        if (data.integrations) setIntegrations(data.integrations);
+      })
       .catch(() => setOnline(false));
   }, []);
 
@@ -228,6 +236,91 @@ export default function App() {
             One endpoint for OpenAI and Anthropic — compatible with any client SDK or tool
           </p>
         </div>
+
+        {/* Integration Status + Setup Guide */}
+        {integrations && (integrations.openai.status !== "ready" || integrations.anthropic.status !== "ready") && (
+          <section style={{ marginBottom: "28px" }}>
+            <h2 style={{ fontSize: "13px", fontWeight: 600, color: "#f59e0b", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: "12px" }}>
+              ⚠ Setup Required
+            </h2>
+            <div style={{ background: "hsl(38,92%,10%)", border: "1px solid hsl(38,92%,25%)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* Status row */}
+              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                {(["openai", "anthropic"] as const).map(p => {
+                  const s = integrations[p];
+                  const ready = s.status === "ready";
+                  const color = p === "openai" ? OPENAI_COLOR : ANTHROPIC_COLOR;
+                  const label = p === "openai" ? "OpenAI" : "Anthropic";
+                  return (
+                    <div key={p} style={{
+                      display: "flex", alignItems: "center", gap: "8px",
+                      background: ready ? `${color}15` : "#ef444415",
+                      border: `1px solid ${ready ? color + "44" : "#ef444444"}`,
+                      borderRadius: "8px", padding: "8px 14px",
+                    }}>
+                      <span style={{ fontSize: "12px" }}>{ready ? "✅" : "❌"}</span>
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: ready ? color : "#ef4444" }}>{label}</span>
+                      <span style={{ fontSize: "11px", color: MUTED }}>{ready ? (s.method === "replit_integration" ? "via Replit Integration" : "via API Key") : "not configured"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Instructions */}
+              <div>
+                <p style={{ margin: "0 0 12px", fontSize: "13px", color: TEXT, fontWeight: 600 }}>
+                  Choose one of the following setup methods:
+                </p>
+
+                {/* Method A */}
+                <div style={{ background: CODE_BG, borderRadius: "8px", padding: "14px 16px", marginBottom: "10px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#22c55e", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Method A — Replit AI Integrations (free, recommended)</div>
+                  <ol style={{ margin: 0, paddingLeft: "18px", color: MUTED, fontSize: "13px", lineHeight: 1.8 }}>
+                    <li>In your Replit project, click <b style={{ color: TEXT }}>Tools → Integrations</b></li>
+                    <li>Search for <b style={{ color: OPENAI_COLOR }}>OpenAI</b> and click Enable</li>
+                    <li>Search for <b style={{ color: ANTHROPIC_COLOR }}>Anthropic</b> and click Enable</li>
+                    <li>Restart the <b style={{ color: TEXT }}>API Server</b> workflow — done!</li>
+                  </ol>
+                </div>
+
+                {/* Method B */}
+                <div style={{ background: CODE_BG, borderRadius: "8px", padding: "14px 16px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#a855f7", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Method B — Your own API Keys (Secrets)</div>
+                  <ol style={{ margin: 0, paddingLeft: "18px", color: MUTED, fontSize: "13px", lineHeight: 1.8 }}>
+                    <li>In your Replit project, click the <b style={{ color: TEXT }}>🔒 Secrets</b> tab (padlock icon in sidebar)</li>
+                    <li>Add secret: <code style={{ color: OPENAI_COLOR }}>OPENAI_API_KEY</code> = your OpenAI key</li>
+                    <li>Add secret: <code style={{ color: ANTHROPIC_COLOR }}>ANTHROPIC_API_KEY</code> = your Anthropic key</li>
+                    <li>Restart the <b style={{ color: TEXT }}>API Server</b> workflow — done!</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Integration Status (all ready) */}
+        {integrations && integrations.openai.status === "ready" && integrations.anthropic.status === "ready" && (
+          <section style={{ marginBottom: "28px" }}>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              {(["openai", "anthropic"] as const).map(p => {
+                const s = integrations[p];
+                const color = p === "openai" ? OPENAI_COLOR : ANTHROPIC_COLOR;
+                const label = p === "openai" ? "OpenAI" : "Anthropic";
+                return (
+                  <div key={p} style={{
+                    display: "flex", alignItems: "center", gap: "8px",
+                    background: `${color}15`, border: `1px solid ${color}44`,
+                    borderRadius: "8px", padding: "8px 14px",
+                  }}>
+                    <span style={{ fontSize: "12px" }}>✅</span>
+                    <span style={{ fontSize: "13px", fontWeight: 600, color }}>{label}</span>
+                    <span style={{ fontSize: "11px", color: MUTED }}>{s.method === "replit_integration" ? "via Replit Integration" : "via API Key"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Connection Details */}
         <section style={{ marginBottom: "28px" }}>

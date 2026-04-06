@@ -5,33 +5,49 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
-// ── Integration availability checks ────────────────────────────────
-function openaiReady(): boolean {
-  return !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
-}
-function anthropicReady(): boolean {
-  return !!(process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY && process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL);
+// ── Integration / API-key availability checks ──────────────────────
+// Priority: Replit AI Integration env vars first, then standard API keys.
+
+function resolveOpenAICredentials(): { apiKey: string; baseURL?: string } | null {
+  if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
+    return { apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL };
+  }
+  if (process.env.OPENAI_API_KEY) {
+    return { apiKey: process.env.OPENAI_API_KEY };
+  }
+  return null;
 }
 
-// Lazy clients — instantiated fresh so they pick up env vars added after startup
+function resolveAnthropicCredentials(): { apiKey: string; baseURL?: string } | null {
+  if (process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY && process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL) {
+    return { apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY, baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL };
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    return { apiKey: process.env.ANTHROPIC_API_KEY };
+  }
+  return null;
+}
+
+function openaiReady(): boolean { return resolveOpenAICredentials() !== null; }
+function anthropicReady(): boolean { return resolveAnthropicCredentials() !== null; }
+
+// Lazy clients — instantiated fresh so they pick up env vars added/changed at runtime
 function getOpenAIClient() {
-  return new OpenAI({
-    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY!,
-  });
+  const creds = resolveOpenAICredentials()!;
+  return new OpenAI({ apiKey: creds.apiKey, ...(creds.baseURL ? { baseURL: creds.baseURL } : {}) });
 }
 function getAnthropicClient() {
-  return new Anthropic({
-    baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-    apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY!,
-  });
+  const creds = resolveAnthropicCredentials()!;
+  return new Anthropic({ apiKey: creds.apiKey, ...(creds.baseURL ? { baseURL: creds.baseURL } : {}) });
 }
+
+const SETUP_HINT = "Add your API key as a Secret in Replit (padlock icon) — OPENAI_API_KEY or ANTHROPIC_API_KEY — then restart the server. Alternatively go to Tools → Integrations and add the Replit AI integration.";
 
 function requireOpenAI(res: Response): boolean {
   if (!openaiReady()) {
     res.status(503).json({
       error: {
-        message: "OpenAI integration not configured. In your Replit project go to Tools → Integrations and add the OpenAI integration, then restart the server.",
+        message: `OpenAI credentials not found. ${SETUP_HINT}`,
         type: "integration_error",
       },
     });
@@ -44,7 +60,7 @@ function requireAnthropic(res: Response): boolean {
   if (!anthropicReady()) {
     res.status(503).json({
       error: {
-        message: "Anthropic integration not configured. In your Replit project go to Tools → Integrations and add the Anthropic integration, then restart the server.",
+        message: `Anthropic credentials not found. ${SETUP_HINT}`,
         type: "integration_error",
       },
     });

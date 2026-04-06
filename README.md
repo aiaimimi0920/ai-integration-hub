@@ -1,6 +1,6 @@
 # AI Integration Hub
 
-A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models — no personal API keys needed. Billed to your Replit AI credits.
+A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models.
 
 ## Endpoints
 
@@ -25,17 +25,27 @@ A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models — 
 
 [![Run on Replit](https://replit.com/badge/github/aiaimimi0920/ai-integration-hub)](https://replit.com/new/github/aiaimimi0920/ai-integration-hub)
 
-### After clicking the button — only 1 step required:
+### After deploying — configure AI provider credentials (pick one method):
 
-**Add AI Integrations** (provides the actual AI model access):
+#### Method A — Replit AI Integrations (free, billed to Replit credits)
 
-Go to **Tools → Integrations** in your new Repl, then add:
+Go to **Tools → Integrations** in your Repl, then add:
 - ✅ **OpenAI**
 - ✅ **Anthropic**
 
-Then click **Run**. That's it.
+Then restart the **API Server** workflow. Done.
 
-> **No secrets to configure.** The default API key is `123456`. Override it anytime by adding a `PROXY_API_KEY` secret.
+#### Method B — Your own API Keys (Secrets)
+
+In your Repl, open the **Secrets** tab (🔒 padlock icon in the sidebar) and add:
+- `OPENAI_API_KEY` — your OpenAI API key
+- `ANTHROPIC_API_KEY` — your Anthropic API key
+
+Then restart the **API Server** workflow. Done.
+
+> **Tip:** After setup, open the portal at your app's URL — it shows a live status badge for each provider and step-by-step instructions if anything is missing.
+
+> **No proxy key needed.** The default gateway key is `123456`. Override it by adding a `PROXY_API_KEY` secret.
 
 ---
 
