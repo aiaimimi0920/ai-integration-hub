@@ -1,137 +1,92 @@
 # AI Integration Hub
 
-A self-hosted dual AI reverse proxy that gives you a single API gateway for **OpenAI** and **Anthropic** models — no personal API keys needed. Runs on Replit AI Integrations, billed to your Replit credits.
+A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models — no personal API keys needed. Billed to your Replit AI credits.
 
-## What it does
+## Endpoints
 
-- **`POST /v1/chat/completions`** — OpenAI-compatible. Works with any OpenAI SDK client and CherryStudio. Supports both OpenAI and Claude models.
-- **`POST /v1/messages`** — Anthropic native format. Compatible with Claude Code, Anthropic SDK, and CherryStudio Anthropic mode.
-- **`GET /v1/models`** — Returns the full list of supported models.
-- **Bearer auth** (`Authorization: Bearer <key>`) and **x-api-key auth** (`x-api-key: <key>`) — both accepted.
-- Streaming, tool calls, and bidirectional format conversion all supported.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/models` | List all supported models |
+| POST | `/v1/chat/completions` | OpenAI-compatible (supports OpenAI + Claude models) |
+| POST | `/v1/messages` | Anthropic native format (supports Claude + OpenAI models) |
+
+**Auth:** `Authorization: Bearer 123456` or `x-api-key: 123456` (default key, change via `PROXY_API_KEY` secret)
 
 ## Supported Models
 
-| Provider  | Models |
-|-----------|--------|
-| OpenAI    | gpt-5.2, gpt-5-mini, gpt-5-nano, o4-mini, o3 |
+| Provider | Models |
+|----------|--------|
+| OpenAI | gpt-5.2, gpt-5-mini, gpt-5-nano, o4-mini, o3 |
 | Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 |
 
 ---
 
-## Deploy to Replit (one-click)
+## One-Click Deploy
 
 [![Run on Replit](https://replit.com/badge/github/aiaimimi0920/ai-integration-hub)](https://replit.com/new/github/aiaimimi0920/ai-integration-hub)
 
----
+### After clicking the button — only 1 step required:
 
-## Manual Deployment on Replit
+**Add AI Integrations** (provides the actual AI model access):
 
-### 1. Import from GitHub
+Go to **Tools → Integrations** in your new Repl, then add:
+- ✅ **OpenAI**
+- ✅ **Anthropic**
 
-1. Go to [replit.com](https://replit.com) and sign in to your account
-2. Click **+ Create Repl** → **Import from GitHub**
-3. Paste the repo URL: `https://github.com/aiaimimi0920/ai-integration-hub`
-4. Click **Import from GitHub**
+Then click **Run**. That's it.
 
-### 2. Add Replit AI Integrations
-
-In your new Repl, open the **Tools** panel → **Integrations**, then add:
-- **OpenAI** integration
-- **Anthropic** integration
-
-This automatically injects the following env vars (no API keys needed):
-- `AI_INTEGRATIONS_OPENAI_BASE_URL`
-- `AI_INTEGRATIONS_OPENAI_API_KEY`
-- `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`
-- `AI_INTEGRATIONS_ANTHROPIC_API_KEY`
-
-### 3. Set your proxy API key
-
-In **Tools → Secrets**, add:
-
-| Secret Name | Value |
-|-------------|-------|
-| `PROXY_API_KEY` | Any string you choose, e.g. `my-secret-key-123` |
-| `SESSION_SECRET` | Any random string, e.g. `random-session-secret` |
-
-### 4. Start the server
-
-Click **Run** or start the workflow called `artifacts/api-server: API Server`.
-
-### 5. Deploy (optional)
-
-Click **Deploy** in Replit to get a permanent `*.replit.app` URL.
+> **No secrets to configure.** The default API key is `123456`. Override it anytime by adding a `PROXY_API_KEY` secret.
 
 ---
 
-## Usage Examples
+## Quick Test
 
-Replace `YOUR_BASE_URL` with your Repl's URL (e.g. `https://ai-integration-hub.yourusername.replit.app`) and `YOUR_KEY` with your `PROXY_API_KEY`.
-
-### List models
 ```bash
-curl https://YOUR_BASE_URL/v1/models \
-  -H "Authorization: Bearer YOUR_KEY"
-```
+# List models
+curl https://YOUR_APP.replit.app/v1/models \
+  -H "Authorization: Bearer 123456"
 
-### Chat with OpenAI model
-```bash
-curl https://YOUR_BASE_URL/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_KEY" \
+# Chat with GPT
+curl https://YOUR_APP.replit.app/v1/chat/completions \
+  -H "Authorization: Bearer 123456" \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-5.2",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
+  -d '{"model":"gpt-5.2","messages":[{"role":"user","content":"Hello!"}]}'
 
-### Chat with Claude model (OpenAI format)
-```bash
-curl https://YOUR_BASE_URL/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_KEY" \
+# Chat with Claude (OpenAI format)
+curl https://YOUR_APP.replit.app/v1/chat/completions \
+  -H "Authorization: Bearer 123456" \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4-6",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
+  -d '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello!"}]}'
 
-### Chat with Claude (Anthropic native format)
-```bash
-curl https://YOUR_BASE_URL/v1/messages \
-  -H "x-api-key: YOUR_KEY" \
+# Claude Code style (x-api-key)
+curl https://YOUR_APP.replit.app/v1/messages \
+  -H "x-api-key: 123456" \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-haiku-4-5",
-    "max_tokens": 256,
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
+  -d '{"model":"claude-haiku-4-5","max_tokens":256,"messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
 ---
 
 ## CherryStudio Setup
 
-1. Settings → AI Provider → Add Provider
-2. Choose **OpenAI** type → Base URL = `https://YOUR_BASE_URL` → API Key = `YOUR_KEY`
-3. Or choose **Anthropic** type → same Base URL and API Key
-4. Add models from the list above → Start chatting
+1. Settings → AI Provider → Add Provider → choose **OpenAI** or **Anthropic**
+2. Base URL: `https://YOUR_APP.replit.app`
+3. API Key: `123456`
+4. Add models → chat
 
 ## Claude Code Setup
 
 ```bash
-claude config set api-key YOUR_KEY
-claude config set api-url https://YOUR_BASE_URL
+claude config set api-key 123456
+claude config set api-url https://YOUR_APP.replit.app
 ```
-
-Claude Code uses `x-api-key` header automatically — fully supported.
 
 ---
 
+## Change the Default Key
+
+Add a Replit Secret named `PROXY_API_KEY` with your preferred value. The default `123456` is only used when no secret is set.
+
 ## Tech Stack
 
-- **API Server**: Node.js + Express + TypeScript (pnpm monorepo)
-- **Frontend Portal**: React + Vite (dark theme, no UI library)
-- **AI SDKs**: `openai` ^6, `@anthropic-ai/sdk` ^0.82
-- **Hosting**: Replit with AI Integrations for zero-config API access
+Node.js · Express · TypeScript · React · Vite · pnpm monorepo · Replit AI Integrations

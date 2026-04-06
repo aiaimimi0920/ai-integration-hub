@@ -29,11 +29,8 @@ function extractToken(req: Request): string {
 }
 
 function verifyToken(req: Request, res: Response): boolean {
-  const proxyKey = process.env.PROXY_API_KEY;
-  if (!proxyKey) {
-    res.status(500).json({ error: { message: "PROXY_API_KEY not configured", type: "server_error" } });
-    return false;
-  }
+  // Default to "123456" so the gateway works out-of-the-box without any secrets setup
+  const proxyKey = process.env.PROXY_API_KEY || "123456";
   const token = extractToken(req);
   if (token !== proxyKey) {
     res.status(401).json({ error: { message: "Unauthorized: invalid or missing Bearer token", type: "authentication_error" } });
