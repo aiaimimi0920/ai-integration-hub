@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -38,6 +39,26 @@ function isOpenAIModel(model: string): boolean {
 
 function isAnthropicModel(model: string): boolean {
   return model.startsWith("claude-");
+}
+
+function tryFlush(res: Response) {
+  try {
+    if (typeof (res as unknown as { flush?: () => void }).flush === "function") {
+      (res as unknown as { flush: () => void }).flush();
+    }
+  } catch { /* ignore */ }
+}
+
+function sendErrorSafe(res: Response, status: number, message: string, type = "api_error") {
+  if (res.headersSent) {
+    // Can't change status — write error as SSE event then end
+    try {
+      res.write(`data: ${JSON.stringify({ error: { message, type } })}\n\n`);
+      res.end();
+    } catch { /* ignore */ }
+  } else {
+    res.status(status).json({ error: { message, type } });
+  }
 }
 
 // ── Tool conversion helpers ─────────────────────────────────────────
@@ -282,6 +303,11 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
     return;
   }
 
+  if (!messages || !Array.isArray(messages)) {
+    res.status(400).json({ error: { message: "messages is required and must be an array", type: "invalid_request_error" } });
+    return;
+  }
+
   try {
     if (isOpenAIModel(model)) {
       // ── OpenAI path ──
@@ -291,8 +317,9 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
         res.setHeader("X-Accel-Buffering", "no");
         res.flushHeaders();
 
-        const keepalive = setInterval(() => { res.write(": keepalive\n\n"); }, 5000);
-
+        const keepalive = setInterval(() => {
+          try { res.write(": keepalive\n\n"); } catch { /* ignore */ }
+        }, 5000);
         req.on("close", () => clearInterval(keepalive));
 
         try {
@@ -307,14 +334,18 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
 
           for await (const chunk of oaiStream) {
             res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-            if (typeof (res as unknown as { flush?: () => void }).flush === "function") {
-              (res as unknown as { flush: () => void }).flush();
-            }
+            tryFlush(res);
           }
           res.write("data: [DONE]\n\n");
+        } catch (streamErr: unknown) {
+          const e = streamErr as { status?: number; message?: string };
+          logger.error({ err: streamErr }, "OpenAI stream error");
+          try {
+            res.write(`data: ${JSON.stringify({ error: { message: e.message || "Stream error", type: "api_error" } })}\n\n`);
+          } catch { /* ignore */ }
         } finally {
           clearInterval(keepalive);
-          res.end();
+          try { res.end(); } catch { /* ignore */ }
         }
       } else {
         const response = await openaiClient.chat.completions.create({
@@ -340,14 +371,15 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
         res.setHeader("X-Accel-Buffering", "no");
         res.flushHeaders();
 
-        const keepalive = setInterval(() => { res.write(": keepalive\n\n"); }, 5000);
+        const keepalive = setInterval(() => {
+          try { res.write(": keepalive\n\n"); } catch { /* ignore */ }
+        }, 5000);
         req.on("close", () => clearInterval(keepalive));
 
         try {
           const msgId = `chatcmpl-${Date.now()}`;
           const created = Math.floor(Date.now() / 1000);
 
-          // Send initial chunk
           res.write(`data: ${JSON.stringify({
             id: msgId, object: "chat.completion.chunk", created, model,
             choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
@@ -368,9 +400,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
 
           for await (const event of anthropicStream) {
             if (event.type === "content_block_start") {
-              if (event.content_block.type === "text") {
-                // Text block — no special handling needed
-              } else if (event.content_block.type === "tool_use") {
+              if (event.content_block.type === "tool_use") {
                 currentToolId = event.content_block.id;
                 toolCallAccumulators.set(currentToolId, {
                   id: event.content_block.id,
@@ -405,9 +435,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
                     id: msgId, object: "chat.completion.chunk", created, model,
                     choices: [{
                       index: 0, delta: {
-                        tool_calls: [{
-                          index: acc.index, function: { arguments: event.delta.partial_json },
-                        }],
+                        tool_calls: [{ index: acc.index, function: { arguments: event.delta.partial_json } }],
                       }, finish_reason: null,
                     }],
                   })}\n\n`);
@@ -419,22 +447,24 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
               let finishReason = "stop";
               if (event.delta.stop_reason === "tool_use") finishReason = "tool_calls";
               else if (event.delta.stop_reason === "max_tokens") finishReason = "length";
-
               res.write(`data: ${JSON.stringify({
                 id: msgId, object: "chat.completion.chunk", created, model,
                 choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
               })}\n\n`);
             }
-
-            if (typeof (res as unknown as { flush?: () => void }).flush === "function") {
-              (res as unknown as { flush: () => void }).flush();
-            }
+            tryFlush(res);
           }
 
           res.write("data: [DONE]\n\n");
+        } catch (streamErr: unknown) {
+          const e = streamErr as { status?: number; message?: string };
+          logger.error({ err: streamErr }, "Anthropic stream error (chat/completions)");
+          try {
+            res.write(`data: ${JSON.stringify({ error: { message: e.message || "Stream error", type: "api_error" } })}\n\n`);
+          } catch { /* ignore */ }
         } finally {
           clearInterval(keepalive);
-          res.end();
+          try { res.end(); } catch { /* ignore */ }
         }
       } else {
         // Non-streaming: always buffer via stream().finalMessage()
@@ -455,7 +485,8 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
   } catch (err: unknown) {
     const error = err as { status?: number; message?: string };
     const status = error.status || 500;
-    res.status(status).json({ error: { message: error.message || "Internal server error", type: "api_error" } });
+    logger.error({ err, model, stream }, "chat/completions error");
+    sendErrorSafe(res, status, error.message || "Internal server error");
   }
 });
 
@@ -482,6 +513,11 @@ router.post("/messages", async (req: Request, res: Response) => {
     return;
   }
 
+  if (!messages || !Array.isArray(messages)) {
+    res.status(400).json({ error: { message: "messages is required and must be an array", type: "invalid_request_error" } });
+    return;
+  }
+
   try {
     if (isAnthropicModel(model)) {
       // ── Claude → Anthropic direct ──
@@ -494,13 +530,15 @@ router.post("/messages", async (req: Request, res: Response) => {
         res.setHeader("X-Accel-Buffering", "no");
         res.flushHeaders();
 
-        const keepalive = setInterval(() => { res.write(": keepalive\n\n"); }, 5000);
+        const keepalive = setInterval(() => {
+          try { res.write(": keepalive\n\n"); } catch { /* ignore */ }
+        }, 5000);
         req.on("close", () => clearInterval(keepalive));
 
         try {
           const anthropicStream = anthropicClient.messages.stream({
             model,
-            max_tokens,
+            max_tokens: max_tokens as number,
             messages: messages as Anthropic.Messages.MessageParam[],
             ...(system ? { system } : {}),
             ...(anthropicTools ? { tools: anthropicTools } : {}),
@@ -511,18 +549,22 @@ router.post("/messages", async (req: Request, res: Response) => {
           for await (const event of anthropicStream) {
             const eventType = (event as { type: string }).type;
             res.write(`event: ${eventType}\ndata: ${JSON.stringify(event)}\n\n`);
-            if (typeof (res as unknown as { flush?: () => void }).flush === "function") {
-              (res as unknown as { flush: () => void }).flush();
-            }
+            tryFlush(res);
           }
+        } catch (streamErr: unknown) {
+          const e = streamErr as { status?: number; message?: string };
+          logger.error({ err: streamErr }, "Anthropic stream error (messages)");
+          try {
+            res.write(`event: error\ndata: ${JSON.stringify({ type: "error", error: { type: "api_error", message: e.message || "Stream error" } })}\n\n`);
+          } catch { /* ignore */ }
         } finally {
           clearInterval(keepalive);
-          res.end();
+          try { res.end(); } catch { /* ignore */ }
         }
       } else {
         const finalMsg = await anthropicClient.messages.stream({
           model,
-          max_tokens,
+          max_tokens: max_tokens as number,
           messages: messages as Anthropic.Messages.MessageParam[],
           ...(system ? { system } : {}),
           ...(anthropicTools ? { tools: anthropicTools } : {}),
@@ -543,20 +585,19 @@ router.post("/messages", async (req: Request, res: Response) => {
         res.setHeader("X-Accel-Buffering", "no");
         res.flushHeaders();
 
-        const keepalive = setInterval(() => { res.write(": keepalive\n\n"); }, 5000);
+        const keepalive = setInterval(() => {
+          try { res.write(": keepalive\n\n"); } catch { /* ignore */ }
+        }, 5000);
         req.on("close", () => clearInterval(keepalive));
 
         try {
           const msgId = `msg_${Date.now()}`;
-          const now = Math.floor(Date.now() / 1000);
 
-          // message_start
           res.write(`event: message_start\ndata: ${JSON.stringify({
             type: "message_start",
             message: { id: msgId, type: "message", role: "assistant", content: [], model, stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } },
           })}\n\n`);
 
-          // content_block_start (text)
           res.write(`event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })}\n\n`);
 
           const oaiStream = await openaiClient.chat.completions.create({
@@ -572,11 +613,9 @@ router.post("/messages", async (req: Request, res: Response) => {
           const toolCallAccumulators: Map<number, { id: string; name: string; args: string; blockIndex: number }> = new Map();
           let nextBlockIndex = 1;
 
-          now; // suppress unused warning
           for await (const chunk of oaiStream) {
             const choice = chunk.choices[0];
             if (!choice) continue;
-
             const delta = choice.delta;
 
             if (delta.content) {
@@ -609,12 +648,9 @@ router.post("/messages", async (req: Request, res: Response) => {
               else stopReason = "end_turn";
             }
 
-            if (typeof (res as unknown as { flush?: () => void }).flush === "function") {
-              (res as unknown as { flush: () => void }).flush();
-            }
+            tryFlush(res);
           }
 
-          // Close all open tool_use blocks
           for (const acc of toolCallAccumulators.values()) {
             res.write(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: acc.blockIndex })}\n\n`);
           }
@@ -624,9 +660,15 @@ router.post("/messages", async (req: Request, res: Response) => {
 
           res.write(`event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: outputTokens } })}\n\n`);
           res.write(`event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`);
+        } catch (streamErr: unknown) {
+          const e = streamErr as { status?: number; message?: string };
+          logger.error({ err: streamErr }, "OpenAI stream error (messages)");
+          try {
+            res.write(`event: error\ndata: ${JSON.stringify({ type: "error", error: { type: "api_error", message: e.message || "Stream error" } })}\n\n`);
+          } catch { /* ignore */ }
         } finally {
           clearInterval(keepalive);
-          res.end();
+          try { res.end(); } catch { /* ignore */ }
         }
       } else {
         const response = await openaiClient.chat.completions.create({
@@ -676,7 +718,8 @@ router.post("/messages", async (req: Request, res: Response) => {
   } catch (err: unknown) {
     const error = err as { status?: number; message?: string };
     const status = error.status || 500;
-    res.status(status).json({ error: { message: error.message || "Internal server error", type: "api_error" } });
+    logger.error({ err, model, stream }, "messages error");
+    sendErrorSafe(res, status, error.message || "Internal server error");
   }
 });
 
