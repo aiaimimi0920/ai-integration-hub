@@ -1,129 +1,223 @@
 # AI Integration Hub
 
-  A self-hosted dual AI reverse proxy for **OpenAI** and **Anthropic** models — deploy on Replit in one click.
+一个双模型 AI 反向代理网关，通过 Replit AI Integrations 将请求路由到 OpenAI 和 Anthropic，并附带 React 文档门户。
 
-  | Method | Path | Description |
-  |--------|------|-------------|
-  | GET | `/v1/models` | List all supported models |
-  | POST | `/v1/chat/completions` | OpenAI-compatible format (supports OpenAI + Claude) |
-  | POST | `/v1/messages` | Anthropic native format (supports Claude + OpenAI) |
+**功能特点：**
+- 统一的 `/v1/chat/completions`（兼容 OpenAI SDK）和 `/v1/messages`（兼容 Anthropic SDK）接口
+- 流式输出（Streaming）支持
+- OpenAI ↔ Anthropic 消息格式互转（任意客户端都可访问两家模型）
+- API Key 鉴权（通过 `PROXY_API_KEY` 环境变量设置）
+- React 文档门户，生产环境由后端直接托管
 
-  **Auth:** `Authorization: Bearer 123456` or `x-api-key: 123456`  
-  **Default key:** `123456` — override by adding a `PROXY_API_KEY` secret.
+---
 
-  ---
+## 一键部署到 Replit
 
-  ## 一键部署 / One-Click Deploy
+**前置条件：** 需要有 Replit 账号（免费版即可）
 
-  [![Run on Replit](https://replit.com/badge/github/aiaimimi0920/ai-integration-hub)](https://replit.com/new/github/aiaimimi0920/ai-integration-hub)
+### 步骤一：Fork 或导入本仓库
 
-  点击上方按钮在 Replit 创建项目后，将下方提示词完整复制，粘贴给你的 **Replit Agent**，Agent 会自动完成全部配置和发布。
+在 Replit 上新建项目，选择 **Import from GitHub**，输入：
+```
+https://github.com/aiaimimi0920/ai-integration-hub
+```
 
-  > After clicking the button, copy the prompt below and paste it to your **Replit Agent** — it will handle everything automatically.
+### 步骤二：安装依赖
 
-  ---
+在 Replit Shell 中运行：
+```bash
+pnpm install
+```
 
-  ## 🤖 Agent 一键部署提示词
+### 步骤三：添加 AI Integrations
 
-  点击上方 "Run on Replit" 按钮创建项目后，打开 **Agent 面板**，粘贴以下提示词：
+在 Replit 左侧工具栏点击 **Tools → Integrations**，分别添加：
+- **OpenAI** integration
+- **Anthropic** integration
 
-  ```
-  不要提问，不需要任何确认，直接依次执行以下 6 步，每步完成后立刻进行下一步：
+添加后，Replit 会自动注入以下环境变量（无需手动设置）：
+- `AI_INTEGRATIONS_OPENAI_API_KEY`
+- `AI_INTEGRATIONS_OPENAI_BASE_URL`
+- `AI_INTEGRATIONS_ANTHROPIC_API_KEY`
+- `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`
 
-  1. 安装依赖（如果 pnpm install 报目录非空或文件已存在，直接跳过 clone 步骤）：
-     git clone https://github.com/aiaimimi0920/ai-integration-hub.git . 2>/dev/null || true
-     pnpm install
+### 步骤四：设置 API Key（可选但推荐）
 
-  2. 用 setupReplitAIIntegrations 工具依次添加 OpenAI AI 集成 和 Anthropic AI 集成
+在 Replit 左侧工具栏点击 **Secrets（锁图标）**，添加：
+```
+PROXY_API_KEY = 你自己设置的密钥
+```
+> 如果不设置，默认值为 `123456`（仅用于测试）
 
-  3. 检查 Secret "PROXY_API_KEY" 是否存在，不存在则设为 123456
+### 步骤五：启动工作流
 
-  4. 创建并启动两个 workflow：
-     - 名称 "artifacts/api-server: API Server"，命令 "pnpm --filter @workspace/api-server run dev"
-     - 名称 "artifacts/api-portal: web"，命令 "pnpm --filter @workspace/api-portal run dev"
+在 Replit 中启动以下两个工作流：
+1. `artifacts/api-server: API Server` — 后端代理服务（端口 8080）
+2. `artifacts/api-portal: web` — 前端文档门户（端口 24927，仅开发环境）
 
-  5. 依次执行以下验证，全部通过才能继续：
-     - curl http://localhost:8080/api/healthz
-       预期：openai 和 anthropic 的 status 均为 "ready"
-     - curl http://localhost:8080/v1/models -H "x-api-key: 123456"
-       预期：返回包含 gpt-5.2、claude-sonnet-4-6 等模型的列表
-     - curl -X POST http://localhost:8080/v1/messages -H "x-api-key: 123456" -H "Content-Type: application/json" -d '{"model":"claude-haiku-4-5","messages":[{"role":"user","content":"hi"}],"max_tokens":20}'
-       预期：返回 Claude 真实回复内容（非 401/503 错误）
+### 步骤六：验证部署
 
-  6. 全部验证通过后调用 suggestDeploy() 发布
-  ```
+```bash
+# 健康检查
+curl https://你的域名/api/healthz
 
-  ---
+# 期望响应
+# {"status":"ok","integrations":{"openai":{"status":"ready","method":"replit_integration"},"anthropic":{"status":"ready","method":"replit_integration"}}}
 
-  ## Supported Models
+# 获取可用模型列表
+curl https://你的域名/v1/models -H "x-api-key: 你的PROXY_API_KEY"
+```
 
-  | Provider | Models |
-  |----------|--------|
-  | OpenAI | `gpt-5.2` · `gpt-5-mini` · `gpt-5-nano` · `o4-mini` · `o3` |
-  | Anthropic | `claude-opus-4-6` · `claude-sonnet-4-6` · `claude-haiku-4-5` |
+### 步骤七：发布（Publish）
 
-  ---
+点击 Replit 右上角 **Deploy** 按钮发布到生产环境。  
+发布后，后端会自动构建前端并托管，访问 `https://你的域名/` 即可看到完整文档门户。
 
-  ## Quick Test
+---
 
-  ```bash
-  # Health check (shows integration status)
-  curl https://YOUR_APP.replit.app/api/healthz
+## API 使用方法
 
-  # List models
-  curl https://YOUR_APP.replit.app/v1/models \
-    -H "x-api-key: 123456"
+**Base URL：** `https://你的域名`  
+**鉴权：**
+- OpenAI 客户端：`Authorization: Bearer YOUR_PROXY_API_KEY`
+- Anthropic 客户端：`x-api-key: YOUR_PROXY_API_KEY`
 
-  # Chat with GPT (OpenAI format)
-  curl -X POST https://YOUR_APP.replit.app/v1/chat/completions \
-    -H "Authorization: Bearer 123456" \
-    -H "Content-Type: application/json" \
-    -d '{"model":"gpt-5.2","messages":[{"role":"user","content":"Hello!"}]}'
+### 获取模型列表
 
-  # Chat with Claude (OpenAI format)
-  curl -X POST https://YOUR_APP.replit.app/v1/chat/completions \
-    -H "Authorization: Bearer 123456" \
-    -H "Content-Type: application/json" \
-    -d '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello!"}]}'
+```bash
+curl https://你的域名/v1/models \
+  -H "x-api-key: YOUR_PROXY_API_KEY"
+```
 
-  # Claude Code style (Anthropic native format)
-  curl -X POST https://YOUR_APP.replit.app/v1/messages \
-    -H "x-api-key: 123456" \
-    -H "Content-Type: application/json" \
-    -d '{"model":"claude-haiku-4-5","max_tokens":256,"messages":[{"role":"user","content":"Hello!"}]}'
-  ```
+### OpenAI 兼容接口（支持 GPT 和 Claude 所有模型）
 
-  ---
+```bash
+curl https://你的域名/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_PROXY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5-mini",
+    "messages": [{"role": "user", "content": "你好"}],
+    "max_tokens": 100
+  }'
+```
 
-  ## CherryStudio Setup
+```bash
+# 也可以直接用 Claude 模型
+curl https://你的域名/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_PROXY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-haiku-4-5",
+    "messages": [{"role": "user", "content": "你好"}],
+    "max_tokens": 100
+  }'
+```
 
-  1. Settings → AI Provider → Add Provider → choose **OpenAI** or **Anthropic**
-  2. Base URL: `https://YOUR_APP.replit.app`
-  3. API Key: `123456`
-  4. Add models → start chatting
+### Anthropic 原生接口
 
-  ## Claude Code Setup
+```bash
+curl https://你的域名/v1/messages \
+  -H "x-api-key: YOUR_PROXY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-haiku-4-5",
+    "messages": [{"role": "user", "content": "你好"}],
+    "max_tokens": 100
+  }'
+```
 
-  ```bash
-  claude config set api-key 123456
-  claude config set api-url https://YOUR_APP.replit.app
-  ```
+### 流式输出（Streaming）
 
-  ---
+```bash
+curl https://你的域名/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_PROXY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5-mini",
+    "messages": [{"role": "user", "content": "讲个故事"}],
+    "stream": true
+  }'
+```
 
-  ## Manual Setup (if not using Agent)
+### 在 Python 中使用（OpenAI SDK）
 
-  If you prefer to configure manually, pick one method:
+```python
+from openai import OpenAI
 
-  **Option A — Replit AI Integrations (free)**  
-  Tools → Integrations → add **OpenAI** + **Anthropic** → restart API Server workflow.
+client = OpenAI(
+    base_url="https://你的域名/v1",
+    api_key="YOUR_PROXY_API_KEY",
+)
 
-  **Option B — Your own API Keys**  
-  Add secrets `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in the Secrets tab → restart API Server workflow.
+response = client.chat.completions.create(
+    model="gpt-5-mini",          # 或者 claude-haiku-4-5 等
+    messages=[{"role": "user", "content": "你好"}],
+    max_tokens=100,
+)
+print(response.choices[0].message.content)
+```
 
-  ---
+### 在 Python 中使用（Anthropic SDK）
 
-  ## Tech Stack
+```python
+import anthropic
 
-  Node.js · Express · TypeScript · React · Vite · pnpm monorepo · Replit AI Integrations
-  
+client = anthropic.Anthropic(
+    base_url="https://你的域名",
+    api_key="YOUR_PROXY_API_KEY",
+)
+
+message = client.messages.create(
+    model="claude-haiku-4-5",
+    max_tokens=100,
+    messages=[{"role": "user", "content": "你好"}],
+)
+print(message.content[0].text)
+```
+
+---
+
+## 可用模型
+
+| 模型 ID | 提供商 |
+|---------|--------|
+| `gpt-5-mini` | OpenAI |
+| `gpt-5-nano` | OpenAI |
+| `gpt-5.2` | OpenAI |
+| `o4-mini` | OpenAI |
+| `o3` | OpenAI |
+| `claude-haiku-4-5` | Anthropic |
+| `claude-sonnet-4-6` | Anthropic |
+| `claude-opus-4-6` | Anthropic |
+
+---
+
+## 项目结构
+
+```
+├── artifacts/
+│   ├── api-server/          # Express 后端代理（TypeScript）
+│   │   └── src/
+│   │       ├── app.ts       # 主应用配置
+│   │       ├── index.ts     # 入口文件
+│   │       └── routes/
+│   │           ├── proxy.ts # 核心代理逻辑（841行）
+│   │           └── health.ts
+│   └── api-portal/          # React 前端文档门户（Vite）
+│       └── src/
+│           ├── App.tsx      # 主页面组件
+│           └── index.css
+├── packages/
+│   └── shared/              # 共享类型定义
+└── README.md
+```
+
+---
+
+## 部署注意事项
+
+- **生产环境** 只需要 `api-server` 工作流运行，它会同时托管前端和后端
+- **开发环境** 需要同时运行 `api-server` 和 `api-portal` 两个工作流
+- 生产构建会先编译前端（`api-portal`），再编译后端（`api-server`）
+- 路由 `/api`、`/v1`、`/` 都指向同一个后端服务
