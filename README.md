@@ -16,6 +16,8 @@
 **前置条件：** 需要有 Replit 账号（免费版即可）
 
 ```
+先阅读github上面的项目，然后进行部署：https://github.com/aiaimimi0920/ai-integration-hub.git
+
 不要提问，不需要任何确认，立刻依次执行以下步骤，每步完成后立即进行下一步，中间不停顿：
 【第1步：克隆仓库并安装依赖】
 检查当前目录是否已有 package.json，若有则跳过 clone 直接执行 pnpm install；
@@ -55,7 +57,10 @@
 【第6步：发布】
 三项验证全部通过后，立即调用 suggestDeploy() 发布应用。
 ```
-
+如果第一次部署失败了，那么就再问一个问题：
+```
+请查看原项目，看看我们为什么部署失败了：https://github.com/aiaimimi0920/ai-integration-hub.git
+```
 ---
 
 ## API 使用方法
