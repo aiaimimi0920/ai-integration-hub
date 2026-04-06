@@ -1,0 +1,149 @@
+你现在是在修改一个已经部署中的 AI 网关项目。不要重构无关代码，不要只改前端页面。你的目标是让这个网关真正兼容 Claude Code，同时不破坏现有的 OpenAI/手工 curl 调用。
+
+先读现有代码，再改。优先检查这些文件：
+- artifacts/api-server/src/routes/proxy.ts
+- artifacts/api-server/src/app.ts
+- 任何 Bearer 鉴权中间件
+- 任何 /v1/messages 和 /v1/chat/completions 的 provider 转发代码
+
+当前已经确认的真实现象如下，请以这些事实为准，不要猜：
+
+1. 站点在线：
+- GET /api/healthz 返回 200 JSON
+- GET /v1/models 使用 `Authorization: Bearer 123456` 返回 200 JSON
+
+2. 手工调用 Claude 能成功：
+- POST /v1/chat/completions 使用 Bearer 能成功
+- POST /v1/messages 使用 Bearer 能成功
+- `POST /v1/messages?beta=true` 使用 Bearer 也能成功
+
+3. Claude Code 当前失败有两个真实原因：
+- 原因 A：Claude Code 常用 `x-api-key: 123456`，而当前网关只接受 `Authorization: Bearer 123456`，所以会返回：
+  `401 {"error":{"message":"Unauthorized: invalid or missing Bearer token","type":"authentication_error"}}`
+- 原因 B：Claude Code 发送到 `/v1/messages?beta=true` 的 body 中包含 `context_management` 字段，当前网关把它原样转发给上游后，上游返回：
+  `invalid_request_error: context_management: Extra inputs are not permitted`
+
+4. 本地 Claude Code 已改为通过 `apiKeyHelper` 提供 token，但网关仍然需要兼容：
+- `Authorization: Bearer <PROXY_API_KEY>`
+- `x-api-key: <PROXY_API_KEY>`
+
+你的任务是只做必要修改，修复以上问题，并完成真实验证。
+
+必须完成的修改：
+
+一、鉴权兼容
+修改 /v1 路由鉴权逻辑，使其同时接受这两种认证方式：
+- `Authorization: Bearer ${PROXY_API_KEY}`
+- `x-api-key: ${PROXY_API_KEY}`
+
+要求：
+- 任意一种匹配即视为通过
+- 不要破坏现有 Bearer 兼容
+- 鉴权失败统一返回 JSON 401，不能返回 HTML
+- 返回结构保持：
+  {
+    "error": {
+      "message": "Unauthorized: invalid or missing Bearer token",
+      "type": "authentication_error"
+    }
+  }
+
+二、/v1/messages 的 Anthropic 上游参数白名单
+当前问题不是客户端，而是网关把 Claude Code 的额外字段直接透传给了上游。
+不要再把 `req.body` 直接 spread 或原样传给 `anthropic.messages.create(...)`。
+必须改成“白名单构造 payload”。
+
+只向 Anthropic 上游传递真正允许的字段，例如：
+- model
+- messages
+- system
+- max_tokens
+- temperature
+- top_p
+- top_k
+- stop_sequences
+- stream
+- tools
+- tool_choice
+- metadata
+- thinking
+
+要求：
+- 明确丢弃不受支持的顶层字段，尤其是 `context_management`
+- 不要修改 `messages` 和 `system` 里面已有的 `cache_control`
+- 不要因为 query string 中有 `?beta=true` 就报错
+- 如果 header 中带 `anthropic-version`，继续正常处理
+- 目标是让 Claude Code 发来的 body 即使带 `context_management` 也能成功，因为网关会在转发前剥离它
+
+三、错误处理
+确保所有 /v1 错误都返回 JSON，不允许 Express 默认 HTML 错误页泄漏到 API。
+尤其是：
+- unsupported model
+- auth failure
+- upstream 4xx/5xx
+- body parse / validation failure
+
+四、不要破坏现有成功路径
+以下路径现在已经被手工验证成功，你的改动不能把它们搞坏：
+- `POST /v1/chat/completions` + Bearer + model=`claude-sonnet-4-6`
+- `POST /v1/messages` + Bearer + model=`claude-sonnet-4-6`
+- `POST /v1/messages?beta=true` + Bearer + model=`claude-sonnet-4-6`
+
+五、如果现有门户文案写明“仅 Bearer”，请同步更新说明
+前端门户如有 Auth Header 文案，允许补充说明：
+- OpenAI 风格客户端可用 `Authorization: Bearer`
+- Anthropic / Claude Code 客户端可用 `x-api-key`
+但前端不是本次核心，后端修复优先。
+
+实现建议：
+- 写一个统一的 token 提取函数，例如：
+  1. 先看 `authorization`
+  2. 再看 `x-api-key`
+- 写一个单独的 `buildAnthropicPayload(body)`，显式挑字段，不要透传整个 body
+
+你必须做真实验证，未通过就继续修，不要提前结束。
+
+最少执行这些验证：
+
+1. `POST /v1/messages` 使用 `Authorization: Bearer 123456`
+body:
+{
+  "model": "claude-sonnet-4-6",
+  "max_tokens": 64,
+  "messages": [{"role": "user", "content": "Hello!"}]
+}
+期望：200 JSON
+
+2. `POST /v1/messages?beta=true` 使用 `Authorization: Bearer 123456`
+同样 body
+期望：200 JSON
+
+3. `POST /v1/messages?beta=true` 使用 `x-api-key: 123456`
+同样 body
+期望：200 JSON
+这一步是 Claude Code 兼容关键验证
+
+4. `POST /v1/messages?beta=true` 使用 Bearer，并额外发送：
+{
+  "model": "claude-sonnet-4-6",
+  "max_tokens": 64,
+  "messages": [{"role": "user", "content": "Hello!"}],
+  "context_management": {"type": "auto"}
+}
+期望：200 JSON
+说明网关已经在转发前忽略了 `context_management`
+
+5. 鉴权失败验证：
+- 不带 token
+- 错 token
+期望：统一 401 JSON
+
+完成后输出：
+1. 实际修改了哪些文件
+2. 具体改了什么
+3. 哪些 curl 验证通过了
+4. 是否确认 Claude Code 的两个阻塞点已修复：
+   - x-api-key 兼容
+   - context_management 剥离
+
+不要只输出“已修复”。必须给出真实验证结果摘要。

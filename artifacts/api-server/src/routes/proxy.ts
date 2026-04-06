@@ -19,14 +19,22 @@ const OPENAI_MODELS = ["gpt-5.2", "gpt-5-mini", "gpt-5-nano", "o4-mini", "o3"];
 const ANTHROPIC_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"];
 const SUPPORTED_MODELS = new Set([...OPENAI_MODELS, ...ANTHROPIC_MODELS]);
 
+function extractToken(req: Request): string {
+  // Accept either: Authorization: Bearer <token>  OR  x-api-key: <token>
+  const auth = req.headers.authorization || "";
+  if (auth.startsWith("Bearer ")) return auth.slice(7);
+  const xApiKey = req.headers["x-api-key"];
+  if (typeof xApiKey === "string") return xApiKey;
+  return "";
+}
+
 function verifyToken(req: Request, res: Response): boolean {
   const proxyKey = process.env.PROXY_API_KEY;
   if (!proxyKey) {
     res.status(500).json({ error: { message: "PROXY_API_KEY not configured", type: "server_error" } });
     return false;
   }
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const token = extractToken(req);
   if (token !== proxyKey) {
     res.status(401).json({ error: { message: "Unauthorized: invalid or missing Bearer token", type: "authentication_error" } });
     return false;
@@ -495,6 +503,43 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
   }
 });
 
+// ── Anthropic payload whitelist ─────────────────────────────────────
+// Only forward fields that the Anthropic API actually accepts.
+// Strips unknown extras like `context_management` to avoid upstream errors.
+
+const ANTHROPIC_ALLOWED_FIELDS = new Set([
+  "model", "messages", "system", "max_tokens", "stream",
+  "tools", "tool_choice", "temperature", "top_p", "top_k",
+  "stop_sequences", "metadata", "thinking",
+]);
+
+type AnthropicPayload = {
+  model: string;
+  messages: unknown;
+  max_tokens: number;
+  system?: unknown;
+  tools?: unknown;
+  tool_choice?: unknown;
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  stop_sequences?: string[];
+  metadata?: unknown;
+  thinking?: unknown;
+};
+
+function buildAnthropicPayload(body: Record<string, unknown>): AnthropicPayload {
+  const out: Record<string, unknown> = {};
+  for (const key of ANTHROPIC_ALLOWED_FIELDS) {
+    if (key in body && body[key] !== undefined) {
+      out[key] = body[key];
+    }
+  }
+  // Ensure required fields have defaults
+  if (!out.max_tokens) out.max_tokens = 8192;
+  return out as AnthropicPayload;
+}
+
 // ── POST /v1/messages (Anthropic native) ────────────────────────────
 
 router.post("/messages", async (req: Request, res: Response) => {
@@ -511,7 +556,7 @@ router.post("/messages", async (req: Request, res: Response) => {
     [key: string]: unknown;
   };
 
-  const { model, messages, system, stream, tools, tool_choice, max_tokens = 8192, ...rest } = body;
+  const { model, messages, system, stream, tools, tool_choice, max_tokens = 8192 } = body;
 
   if (!model) {
     res.status(400).json({ error: { message: "model is required", type: "invalid_request_error" } });
@@ -526,8 +571,8 @@ router.post("/messages", async (req: Request, res: Response) => {
   try {
     if (isAnthropicModel(model)) {
       // ── Claude → Anthropic direct ──
-      const anthropicTools = tools as Anthropic.Messages.Tool[] | undefined;
-      const anthropicToolChoice = tool_choice as Anthropic.Messages.ToolChoice | undefined;
+      // Use whitelist builder to strip unknown fields (e.g. context_management)
+      const anthropicPayload = buildAnthropicPayload(body as Record<string, unknown>);
 
       if (stream) {
         res.setHeader("Content-Type", "text/event-stream");
@@ -541,15 +586,9 @@ router.post("/messages", async (req: Request, res: Response) => {
         req.on("close", () => clearInterval(keepalive));
 
         try {
-          const anthropicStream = anthropicClient.messages.stream({
-            model,
-            max_tokens: max_tokens as number,
-            messages: messages as Anthropic.Messages.MessageParam[],
-            ...(system ? { system } : {}),
-            ...(anthropicTools ? { tools: anthropicTools } : {}),
-            ...(anthropicToolChoice ? { tool_choice: anthropicToolChoice } : {}),
-            ...rest,
-          });
+          const anthropicStream = anthropicClient.messages.stream(
+            anthropicPayload as Anthropic.Messages.MessageStreamParams
+          );
 
           for await (const event of anthropicStream) {
             const eventType = (event as { type: string }).type;
@@ -567,15 +606,9 @@ router.post("/messages", async (req: Request, res: Response) => {
           try { res.end(); } catch { /* ignore */ }
         }
       } else {
-        const finalMsg = await anthropicClient.messages.stream({
-          model,
-          max_tokens: max_tokens as number,
-          messages: messages as Anthropic.Messages.MessageParam[],
-          ...(system ? { system } : {}),
-          ...(anthropicTools ? { tools: anthropicTools } : {}),
-          ...(anthropicToolChoice ? { tool_choice: anthropicToolChoice } : {}),
-          ...rest,
-        }).finalMessage();
+        const finalMsg = await anthropicClient.messages.stream(
+          anthropicPayload as Anthropic.Messages.MessageStreamParams
+        ).finalMessage();
         res.json(finalMsg);
       }
     } else if (isOpenAIModel(model)) {

@@ -237,14 +237,15 @@ export default function App() {
           <div style={{ background: CARD, border: `1px solid ${CARD_BORDER}`, borderRadius: "12px", overflow: "hidden" }}>
             {[
               { label: "Base URL", value: baseUrl },
-              { label: "Authorization", value: "Bearer YOUR_PROXY_API_KEY" },
-            ].map((item, i) => (
+              { label: "OpenAI clients", value: "Authorization: Bearer YOUR_PROXY_API_KEY" },
+              { label: "Claude Code / Anthropic SDK", value: "x-api-key: YOUR_PROXY_API_KEY" },
+            ].map((item, i, arr) => (
               <div key={i} style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: "14px 16px",
-                borderBottom: i < 1 ? `1px solid ${CARD_BORDER}` : "none",
+                borderBottom: i < arr.length - 1 ? `1px solid ${CARD_BORDER}` : "none",
                 gap: "12px",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
