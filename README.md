@@ -14,7 +14,7 @@
 ## 一键部署到 Replit
 
 **前置条件：** 需要有 Replit 账号（免费版即可）
-
+一：将下面的提示词直接发送给agent，让其自动执行：
 ```
 先阅读github上面的项目，然后进行部署：https://github.com/aiaimimi0920/ai-integration-hub.git
 
@@ -57,11 +57,263 @@
 【第6步：发布】
 三项验证全部通过后，立即调用 suggestDeploy() 发布应用。
 ```
-如果第一次部署失败了，那么就再问一个问题：
+二：部署后给其他任意ai发如下提示词用于测试网关节点是否正常，只需将第1个 BASE_URL 替换为实际网关域名既可：
 ```
-请查看原项目，看看我们为什么部署失败了：https://github.com/aiaimimi0920/ai-integration-hub.git
+你现在要测试一个 AI 网关是否真的可用，而不是只看页面是否能打开。
+
+目标域名：
+{{BASE_URL}}
+
+固定测试密钥：
+123456
+
+请严格按下面顺序执行，并在每一步记录：
+1. 请求路径
+2. 使用的请求头
+3. 关键请求体
+4. HTTP 状态码
+5. 返回是 JSON、SSE 还是 HTML
+6. 核心结果摘要
+
+测试顺序：
+
+一、健康检查
+请求：
+GET {{BASE_URL}}/api/healthz
+判定：
+- 返回 200 JSON 才算通过
+- 如果不是 JSON，记为失败
+
+二、模型列表
+请求：
+GET {{BASE_URL}}/v1/models
+头：
+Authorization: Bearer 123456
+判定：
+- 返回 200 JSON 模型列表才算通过
+- 如果返回 HTML/API Portal，说明 /v1 路由被前端覆盖
+- 如果这一步失败，后面仍可继续探测，但要明确标注“核心 API 已异常”
+
+三、Claude 原生最小调用
+请求：
+POST {{BASE_URL}}/v1/messages?beta=true
+头：
+x-api-key: 123456
+anthropic-version: 2023-06-01
+Content-Type: application/json
+body:
+{
+  "model": "claude-sonnet-4-6",
+  "max_tokens": 64,
+  "messages": [
+    {"role": "user", "content": "Hello!"}
+  ]
+}
+判定：
+- 返回 200 JSON，且 content 中有文本，才算通过
+
+四、OpenAI 兼容最小调用
+请求：
+POST {{BASE_URL}}/v1/chat/completions
+头：
+Authorization: Bearer 123456
+Content-Type: application/json
+body:
+{
+  "model": "claude-sonnet-4-6",
+  "messages": [
+    {"role": "user", "content": "Hello!"}
+  ]
+}
+判定：
+- 返回 200 JSON
+- 必须包含 object=chat.completion、choices、message.content
+
+五、context_management 兼容性
+请求：
+POST {{BASE_URL}}/v1/messages?beta=true
+头：
+x-api-key: 123456
+anthropic-version: 2023-06-01
+Content-Type: application/json
+body:
+{
+  "model": "claude-sonnet-4-6",
+  "max_tokens": 64,
+  "messages": [
+    {"role": "user", "content": "Hello!"}
+  ],
+  "context_management": {"type": "auto"}
+}
+判定：
+- 返回 200 JSON 才算兼容
+- 如果报 `context_management: Extra inputs are not permitted`，记为不兼容 Claude Code
+
+六、OpenAI 流式
+请求：
+POST {{BASE_URL}}/v1/chat/completions
+头：
+Authorization: Bearer 123456
+Content-Type: application/json
+body:
+{
+  "model": "claude-sonnet-4-6",
+  "stream": true,
+  "messages": [
+    {"role": "user", "content": "Say hello in five words."}
+  ]
+}
+判定：
+- 必须返回 SSE
+- 必须看到至少一个 `chat.completion.chunk`
+- 最后最好有 `[DONE]`
+
+七、Anthropic 流式
+请求：
+POST {{BASE_URL}}/v1/messages?beta=true
+头：
+x-api-key: 123456
+anthropic-version: 2023-06-01
+Content-Type: application/json
+body:
+{
+  "model": "claude-sonnet-4-6",
+  "max_tokens": 64,
+  "stream": true,
+  "messages": [
+    {"role": "user", "content": "Say hello in five words."}
+  ]
+}
+判定：
+- 必须返回 SSE
+- 必须看到 `message_start` / `content_block_delta` / `message_stop` 中的至少若干事件
+
+八、OpenAI 工具调用
+请求：
+POST {{BASE_URL}}/v1/chat/completions
+头：
+Authorization: Bearer 123456
+Content-Type: application/json
+body:
+{
+  "model": "claude-sonnet-4-6",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Use the provided tool to get the current weather for Shanghai. Do not answer directly."
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get the weather for a city",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string",
+              "description": "City name"
+            }
+          },
+          "required": ["city"],
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "tool_choice": "required"
+}
+判定：
+- 返回 200 JSON
+- 必须出现 `tool_calls`
+- `finish_reason` 应为 `tool_calls`
+
+九、Anthropic 工具调用
+请求：
+POST {{BASE_URL}}/v1/messages?beta=true
+头：
+x-api-key: 123456
+anthropic-version: 2023-06-01
+Content-Type: application/json
+body:
+{
+  "model": "claude-sonnet-4-6",
+  "max_tokens": 64,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Use the provided tool to get the current weather for Shanghai. Do not answer directly."
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get the weather for a city",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string",
+            "description": "City name"
+          }
+        },
+        "required": ["city"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "any"
+  }
+}
+判定：
+- 返回 200 JSON
+- 必须出现 `tool_use`
+- `stop_reason` 应为 `tool_use`
+
+重要规则：
+1. 不要只说“正常”或“异常”，必须按步骤给出结果。
+2. 如果某个 `/v1/*` 请求返回 HTML `API Portal`，明确指出：API 路由被前端页面覆盖或回退。
+3. 如果某个请求返回 `401 invalid x-api-key`，明确指出：上游 Anthropic 认证链路有问题。
+4. 如果某个请求返回 `context_management: Extra inputs are not permitted`，明确指出：Claude Code 兼容未做好。
+5. 如果是 PowerShell 环境，避免直接写复杂 JSON 字符串转义；优先用 here-string 或临时 JSON 文件方式发请求。
+6. 结尾必须给出总评，分类为：
+- 完全可用
+- 基础可用但高级能力异常
+- 页面在线但 API 不可用
+- 服务异常
+
+最终输出格式：
+- 简短总评
+- 每一步结果
+- 关键错误归因
+- 最终可用性结论
+```
+三：如果测试失败，那么就再问agent，其一般而言就会自动修复。
+```
+请查看原项目，看看我们为什么部署失败了：https://github.com/aiaimimi0920/ai-integration-hub.git ，并尝试修复成功。
+这是其他ai认为当前项目存在的问题：
+"""
+{{将其他ai的总结放进来}}
+"""
 ```
 ---
+## 最简单的配置
+将.claude/settings.json内容替换为（注意密钥默认都是123456,你可以鞭策ai进行修改）：
+```
+{
+  "apiKeyHelper": "powershell -NoProfile -Command \"[Console]::Out.Write('123456')\"",
+
+  "env": {
+    "ANTHROPIC_BASE_URL": "实际网关"
+  },
+  "includeCoAuthoredBy": false,
+  "model": "opus[1m]",
+  "skipDangerousModePermissionPrompt": true
+}
+```
 
 ## API 使用方法
 
