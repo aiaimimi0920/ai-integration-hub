@@ -115,9 +115,10 @@ function tryFlush(res: Response) {
 
 function sendErrorSafe(res: Response, status: number, message: string, type = "api_error") {
   if (res.headersSent) {
-    // Can't change status — write error as SSE event then end
+    // Can't change status — write error as SSE event, then send [DONE] to close the stream properly
     try {
       res.write(`data: ${JSON.stringify({ error: { message, type } })}\n\n`);
+      res.write("data: [DONE]\n\n");
       res.end();
     } catch { /* ignore */ }
   } else {
@@ -415,6 +416,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
           logger.error({ err: streamErr }, "OpenAI stream error");
           try {
             res.write(`data: ${JSON.stringify({ error: { message: e.message || "Stream error", type: "api_error" } })}\n\n`);
+            res.write("data: [DONE]\n\n");
           } catch { /* ignore */ }
         } finally {
           clearInterval(keepalive);
@@ -536,6 +538,7 @@ router.post("/chat/completions", async (req: Request, res: Response) => {
           logger.error({ err: streamErr }, "Anthropic stream error (chat/completions)");
           try {
             res.write(`data: ${JSON.stringify({ error: { message: e.message || "Stream error", type: "api_error" } })}\n\n`);
+            res.write("data: [DONE]\n\n");
           } catch { /* ignore */ }
         } finally {
           clearInterval(keepalive);
